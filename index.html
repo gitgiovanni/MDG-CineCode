@@ -442,6 +442,38 @@
       border-color: var(--border-strong);
     }
 
+    .btn-ai-guide {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      min-height: 38px;
+      padding: 0 13px;
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(6, 182, 212, 0.42);
+      background: rgba(6, 182, 212, 0.12);
+      color: #a5f3fc;
+      font-family: var(--font-sans);
+      font-size: 0.82rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.16s ease, border-color 0.16s ease, transform 0.1s ease;
+    }
+
+    .btn-ai-guide:hover:not(:disabled) {
+      background: rgba(6, 182, 212, 0.22);
+      border-color: rgba(103, 232, 249, 0.68);
+      color: #ffffff;
+    }
+
+    .btn-ai-guide:active:not(:disabled) {
+      transform: translateY(1px);
+    }
+
+    .btn-ai-guide:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
     .lib-count-pill {
       display: inline-flex;
       align-items: center;
@@ -931,6 +963,73 @@
       border-color: rgba(236, 72, 153, 0.46);
     }
 
+    /* Painel Compacto de Exportação (Formato + Qualidade/Peso) */
+    .export-panel {
+      display: flex;
+      flex-direction: column;
+      gap: 9px;
+      padding: 11px 12px;
+      border-radius: var(--radius-lg);
+      background: rgba(255, 255, 255, 0.028);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .export-options-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .export-field {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .export-label {
+      font-size: 0.65rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+
+    .export-select {
+      width: 100%;
+      min-height: 36px;
+      padding: 0 28px 0 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+      background-color: var(--bg-elevated);
+      background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%239aa5bc' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'/%3E%3C/svg%3E");
+      background-repeat: no-repeat;
+      background-position: right 9px center;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 0.77rem;
+      font-weight: 500;
+      cursor: pointer;
+      appearance: none;
+      -webkit-appearance: none;
+      outline: none;
+      transition: border-color 0.16s ease, background-color 0.16s ease;
+    }
+
+    .export-select:hover:not(:disabled) {
+      border-color: var(--border-strong);
+      background-color: var(--bg-hover);
+    }
+
+    .export-select:focus {
+      border-color: var(--accent-indigo);
+    }
+
+    .export-select:disabled {
+      opacity: 0.55;
+      cursor: not-allowed;
+    }
+
     /* Botão Principal Inferior: Exportar Vídeo 9:16 (.webm) */
     .btn-export {
       position: relative;
@@ -1310,81 +1409,170 @@
     }
 
     /* ==========================================================================
-       TOAST DE FEEDBACK (Substitui alert/confirm)
+       MODAL: GUIA PARA IA (ABAS DE PROMPT + PRÉVIA DOS 18 SFX)
        ========================================================================== */
-    .toast {
-      position: fixed;
-      bottom: 20px;
-      left: 50%;
-      transform: translateX(-50%) translateY(20px);
-      background: #1b2234;
+    .modal-dialog.guide-dialog {
+      max-width: 820px;
+    }
+
+    .guide-tabs {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      padding: 4px;
+      border-radius: var(--radius-md);
+      background: #080b12;
+      border: 1px solid var(--border-subtle);
+    }
+
+    .guide-tab {
+      min-height: 38px;
+      padding: 0 12px;
+      border-radius: var(--radius-sm);
+      border: 1px solid transparent;
+      background: transparent;
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: 0.81rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.15s ease, color 0.15s ease, border-color 0.15s ease;
+    }
+
+    .guide-tab:hover {
       color: var(--text-primary);
+      background: rgba(255, 255, 255, 0.04);
+    }
+
+    .guide-tab.active {
+      color: #ffffff;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.34), rgba(6, 182, 212, 0.24));
+      border-color: rgba(129, 140, 248, 0.5);
+    }
+
+    .guide-hint {
+      font-size: 0.77rem;
+      line-height: 1.45;
+      color: var(--text-secondary);
+    }
+
+    .prompt-textarea {
+      width: 100%;
+      min-height: 235px;
+      resize: vertical;
+      padding: 13px 15px;
+      border-radius: var(--radius-md);
       border: 1px solid var(--border-strong);
-      padding: 11px 18px;
-      border-radius: 999px;
-      font-size: 0.83rem;
-      box-shadow: 0 12px 32px rgba(0, 0, 0, 0.62);
+      background: #080b12;
+      color: #e2e8f0;
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      line-height: 1.52;
+      outline: none;
+    }
+
+    .prompt-textarea:focus {
+      border-color: var(--accent-cyan);
+      box-shadow: 0 0 0 3px rgba(6, 182, 212, 0.18);
+    }
+
+    .btn-copy-master {
+      width: 100%;
+      min-height: 44px;
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: linear-gradient(135deg, #4f46e5 0%, #0891b2 100%);
+      color: #ffffff;
+      font-family: var(--font-sans);
+      font-size: 0.88rem;
+      font-weight: 700;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 8px 22px rgba(79, 70, 229, 0.3);
+      transition: filter 0.15s ease, transform 0.1s ease;
+    }
+
+    .btn-copy-master:hover {
+      filter: brightness(1.09);
+    }
+
+    .btn-copy-master:active {
+      transform: translateY(1px);
+    }
+
+    .sfx-preview-section {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 12px 14px;
+      border-radius: var(--radius-md);
+      background: rgba(255, 255, 255, 0.025);
+      border: 1px solid var(--border-subtle);
+    }
+
+    .sfx-preview-header {
       display: flex;
       align-items: center;
-      gap: 9px;
-      opacity: 0;
-      pointer-events: none;
-      transition: opacity 0.22s ease, transform 0.22s ease;
-      z-index: 120;
-      max-width: calc(100vw - 28px);
+      justify-content: space-between;
+      gap: 8px;
+      font-size: 0.74rem;
+      color: var(--text-secondary);
+      font-weight: 600;
     }
 
-    .toast.visible {
-      opacity: 1;
-      transform: translateX(-50%) translateY(0);
+    .sfx-preview-sub {
+      font-weight: 400;
+      color: var(--text-muted);
+      font-size: 0.71rem;
     }
 
-    .toast-dot {
-      width: 8px;
-      height: 8px;
-      border-radius: 50%;
-      background: var(--accent-emerald);
-      flex-shrink: 0;
+    .sfx-tags-grid {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px;
     }
 
-    .toast.error .toast-dot { background: var(--accent-danger); }
-    .toast.amber .toast-dot { background: var(--accent-amber); }
+    .sfx-tag {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      padding: 5px 10px;
+      border-radius: 999px;
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+      color: #cbd5e1;
+      font-family: var(--font-mono);
+      font-size: 0.71rem;
+      cursor: pointer;
+      transition: background-color 0.14s ease, border-color 0.14s ease, color 0.14s ease, transform 0.1s ease;
+    }
+
+    .sfx-tag:hover {
+      background: rgba(6, 182, 212, 0.16);
+      border-color: rgba(6, 182, 212, 0.48);
+      color: #ffffff;
+    }
+
+    .sfx-tag.playing {
+      background: rgba(245, 158, 11, 0.24);
+      border-color: rgba(251, 191, 36, 0.75);
+      color: #fef3c7;
+      transform: scale(0.96);
+    }
 
     /* ==========================================================================
-       RESPONSIVIDADE TABLET / MOBILE
+       TOAST DE FEEDBACK (Substitui alert/confirm)
        ========================================================================== */
-    @media (max-width: 940px) {
-      body {
-        align-items: flex-start;
-        padding: 14px 12px 28px;
-      }
-
-      .studio-shell {
-        grid-template-columns: 1fr;
-        max-width: 560px;
-        gap: 16px;
-      }
-
-      .phone-bezel {
-        height: auto;
-        width: min(100%, 360px);
-        max-height: 75vh;
-      }
-
-      .controls-card {
-        max-height: none;
-      }
-    }
-
-    @media (max-width: 480px) {
-      .project-toolbar,
-      .studio-header,
-      .controls-body {
-        padding-left: 14px;
-        padding-right: 14px;
-      }
-
+/* ... existing code ... -->
       .controls-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .export-options-row,
+      .guide-tabs {
         grid-template-columns: 1fr;
       }
 
@@ -1482,11 +1670,18 @@
             <span>Novo Vídeo (JSON)</span>
           </button>
 
+          <button type="button" class="btn-ai-guide" id="btnOpenAiGuide">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"></path>
+            </svg>
+            <span>Guia para IA</span>
+          </button>
+
           <button type="button" class="btn-library" id="btnOpenLibrary">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
             </svg>
-            <span>Biblioteca</span>
+            <span>Meus Projetos</span>
             <span class="lib-count-pill" id="libraryCountBadge">1</span>
           </button>
         </div>
@@ -1615,18 +1810,40 @@
           </button>
         </div>
 
-        <!-- Botão Principal: Exportar Vídeo 9:16 (.webm) -->
-        <button type="button" class="btn btn-export" id="btnExport">
-          <span class="export-progress-bg" id="exportProgressBg"></span>
-          <span class="btn-export-content">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-              <polyline points="7 10 12 15 17 10"></polyline>
-              <line x1="12" y1="15" x2="12" y2="3"></line>
-            </svg>
-            <span id="exportText">Exportar Vídeo 9:16 (.webm)</span>
-          </span>
-        </button>
+        <!-- Seção de Exportação: Formato, Qualidade/Peso e Download -->
+        <div class="export-panel">
+          <div class="export-options-row">
+            <label class="export-field">
+              <span class="export-label">Formato</span>
+              <select class="export-select" id="exportFormatSelect" aria-label="Formato do arquivo de vídeo">
+                <option value="webm" selected>WebM (Duração Corrigida)</option>
+                <option value="mp4" id="exportMp4Option">MP4 (Nativo)</option>
+              </select>
+            </label>
+
+            <label class="export-field">
+              <span class="export-label">Qualidade / Peso</span>
+              <select class="export-select" id="exportQualitySelect" aria-label="Qualidade e peso do vídeo">
+                <option value="light">Leve (30 FPS · ~3 Mbps)</option>
+                <option value="standard" selected>Padrão (60 FPS · ~4.5 Mbps)</option>
+                <option value="high">Alta (60 FPS · ~8 Mbps)</option>
+              </select>
+            </label>
+          </div>
+
+          <!-- Botão Principal: Exportar Vídeo 9:16 -->
+          <button type="button" class="btn btn-export" id="btnExport">
+            <span class="export-progress-bg" id="exportProgressBg"></span>
+            <span class="btn-export-content">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                <polyline points="7 10 12 15 17 10"></polyline>
+                <line x1="12" y1="15" x2="12" y2="3"></line>
+              </svg>
+              <span id="exportText">Exportar Vídeo 9:16 (.webm)</span>
+            </span>
+          </button>
+        </div>
       </div>
     </section>
   </main>
@@ -1724,6 +1941,59 @@
         </div>
 
         <div class="library-list" id="libraryList"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ========================================================================
+       MODAL: GUIA PARA IA (PROMPT MESTRE + CONTINUAÇÃO + PRÉVIA DE 18 SFX)
+       ======================================================================== -->
+  <div class="modal-backdrop" id="aiGuideModal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="aiGuideModalTitle">
+    <div class="modal-dialog guide-dialog">
+      <div class="modal-header">
+        <div class="modal-title-group">
+          <h2 class="modal-title" id="aiGuideModalTitle">Guia para IA — Prompts Mestres</h2>
+          <p class="modal-subtitle">Copie o prompt pronto e cole no Gemini, ChatGPT ou Claude para gerar vídeos compatíveis na hora.</p>
+        </div>
+        <button type="button" class="btn-icon-close" id="btnCloseAiGuide" aria-label="Fechar guia para IA">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="6" x2="6" y2="18"></line>
+            <line x1="6" y1="6" x2="18" y2="18"></line>
+          </svg>
+        </button>
+      </div>
+
+      <div class="modal-body">
+        <div class="guide-tabs" role="tablist">
+          <button type="button" class="guide-tab active" id="tabNewVideoPrompt" role="tab" aria-selected="true">
+            Prompt — Criar Novo Vídeo
+          </button>
+          <button type="button" class="guide-tab" id="tabContinuePrompt" role="tab" aria-selected="false">
+            Prompt — Continuar História (+ Próxima Cena)
+          </button>
+        </div>
+
+        <p class="guide-hint" id="aiPromptHint">
+          Cole este prompt na sua IA favorita substituindo apenas o trecho final <strong>[COLE SUA IDEIA AQUI]</strong>. Depois, traga o JSON de volta em <strong>+ Novo Vídeo (JSON)</strong>.
+        </p>
+
+        <textarea id="aiPromptTextarea" class="prompt-textarea" spellcheck="false" aria-label="Prompt mestre para IA"></textarea>
+
+        <button type="button" class="btn-copy-master" id="btnCopyAiPrompt">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+          </svg>
+          <span id="copyAiPromptLabel">Copiar Prompt Mestre</span>
+        </button>
+
+        <div class="sfx-preview-section">
+          <div class="sfx-preview-header">
+            <span>18 Efeitos Sonoros Sintetizados Prontos</span>
+            <span class="sfx-preview-sub">Clique em qualquer tag para ouvir uma prévia agora</span>
+          </div>
+          <div class="sfx-tags-grid" id="sfxTagsGrid"></div>
+        </div>
       </div>
     </div>
   </div>
@@ -2154,6 +2424,9 @@
       const btnExport = document.getElementById('btnExport');
       const exportText = document.getElementById('exportText');
       const exportProgressBg = document.getElementById('exportProgressBg');
+      const exportFormatSelect = document.getElementById('exportFormatSelect');
+      const exportMp4Option = document.getElementById('exportMp4Option');
+      const exportQualitySelect = document.getElementById('exportQualitySelect');
 
       const recBadge = document.getElementById('recBadge');
       const recBadgeText = document.getElementById('recBadgeText');
@@ -2162,6 +2435,7 @@
 
       // Modal JSON
       const btnOpenJsonModal = document.getElementById('btnOpenJsonModal');
+      const btnOpenAiGuide = document.getElementById('btnOpenAiGuide');
       const jsonModal = document.getElementById('jsonModal');
       const btnCloseJsonModal = document.getElementById('btnCloseJsonModal');
       const btnPasteClipboard = document.getElementById('btnPasteClipboard');
@@ -2182,6 +2456,17 @@
       const btnDownloadCurrentJson = document.getElementById('btnDownloadCurrentJson');
       const libraryList = document.getElementById('libraryList');
 
+      // Modal Guia para IA
+      const aiGuideModal = document.getElementById('aiGuideModal');
+      const btnCloseAiGuide = document.getElementById('btnCloseAiGuide');
+      const tabNewVideoPrompt = document.getElementById('tabNewVideoPrompt');
+      const tabContinuePrompt = document.getElementById('tabContinuePrompt');
+      const aiPromptHint = document.getElementById('aiPromptHint');
+      const aiPromptTextarea = document.getElementById('aiPromptTextarea');
+      const btnCopyAiPrompt = document.getElementById('btnCopyAiPrompt');
+      const copyAiPromptLabel = document.getElementById('copyAiPromptLabel');
+      const sfxTagsGrid = document.getElementById('sfxTagsGrid');
+
       // Toast
       const toastEl = document.getElementById('toast');
       const toastMsg = document.getElementById('toastMessage');
@@ -2196,24 +2481,24 @@
       let isPlaying = false;
       let isLooping = true;
       let isMuted = false;
-      let subtitleMode = 'top';      // 'top' | 'bottom' | 'hidden'
-      let showGuides = false;
-      let isDragging = false;
-      let wasPlayingBeforeDrag = false;
-      let hasStartedOnce = false;
-      let lastFrameTimestamp = null;
-      let dynamicCameraLabel = null;
-      let lastActiveSceneIdx = -1;
-      let scenePillElements = [];
-      let lastRuntimeErrorMsg = null;
-
-      // Estado da exportação .webm
+      // Estado da exportação .webm / .mp4
       let isRecording = false;
       let recordStartTimestamp = 0;
+      let recordLastTick = 0;
+      let recordClockSec = 0;
       let activeRecorder = null;
       let activeVideoStream = null;
       let wasPlayingBeforeRecord = false;
       let recordedChunks = [];
+      let supportedMp4Mime = null;
+      let activeGuideTab = 'new'; // 'new' | 'continue'
+
+      // Presets de Qualidade / Peso (FPS e bitrate equilibrados para Reels/WhatsApp)
+      const EXPORT_QUALITY_PRESETS = {
+        light: { fps: 30, videoBitsPerSecond: 3000000, audioBitsPerSecond: 128000, label: 'Leve 30 FPS' },
+        standard: { fps: 60, videoBitsPerSecond: 4500000, audioBitsPerSecond: 128000, label: 'Padrão 60 FPS' },
+        high: { fps: 60, videoBitsPerSecond: 8000000, audioBitsPerSecond: 128000, label: 'Alta 60 FPS' }
+      };
 
       // Estado da validação do modal JSON
       let validatedModalData = null;
@@ -2284,7 +2569,7 @@
           keepAliveOsc = audioCtx.createOscillator();
           keepAliveGain = audioCtx.createGain();
           keepAliveOsc.frequency.setValueAtTime(440, audioCtx.currentTime);
-          keepAliveGain.gain.setValueAtTime(0.00001, audioCtx.currentTime);
+          keepAliveGain.gain.setValueAtTime(0.0001, audioCtx.currentTime);
           keepAliveOsc.connect(keepAliveGain);
           keepAliveGain.connect(recordDest);
           keepAliveOsc.start();
@@ -2989,7 +3274,7 @@
 
         if (alpha <= 0.01) return;
 
-        const yPos = subtitleMode === 'bottom' ? 1610 : 290;
+        const yPos = subtitleMode === 'bottom' ? 1600 : 300;
         const popScale = progress < 1 ? lerp(0.76, 1.0, easeOutBack(clamp(progress, 0, 1))) : 1.0;
 
         c.save();
@@ -3117,7 +3402,7 @@
         }
 
         const title = String(rawInput.title || 'Vídeo Sem Título').trim();
-        const description = String(rawInput.description || 'Animação procedural 9:16 gerada via JSON.').trim();
+        const description = String(rawInput.description || rawInput.subtitle || 'Animação procedural 9:16 gerada via JSON.').trim();
         const subtitlePosition = ['top', 'bottom', 'hidden'].includes(rawInput.subtitlePosition)
           ? rawInput.subtitlePosition
           : null;
@@ -3150,12 +3435,12 @@
 
             let renderFn;
             try {
-              renderFn = new Function('ctx', 't', 'duration', 'h', seg.renderBody);
+              renderFn = new Function('ctx', 't', 'duration', 'h', 'helpers', seg.renderBody);
             } catch (err) {
               throw new Error(`Erro de sintaxe JS no segmento #${idx + 1}: ${err.message}`);
             }
 
-            const segName = String(seg.name || `Cena ${idx + 1}`).trim();
+            const segName = String(seg.name || seg.title || `Cena ${idx + 1}`).trim();
             const segCam = String(seg.cameraLabel || 'CAM · 1.00×').trim();
             const transitionIn = ['cut', 'fade', 'zoom'].includes(seg.transitionIn) ? seg.transitionIn : 'cut';
             const segStart = cursor;
@@ -3223,7 +3508,7 @@
 
           let renderFn;
           try {
-            renderFn = new Function('ctx', 't', 'duration', 'h', rawInput.renderBody);
+            renderFn = new Function('ctx', 't', 'duration', 'h', 'helpers', rawInput.renderBody);
           } catch (err) {
             throw new Error(`Erro de sintaxe JS em "renderBody": ${err.message}`);
           }
@@ -3397,7 +3682,7 @@
         targetCtx.save();
         targetCtx.setTransform(1, 0, 0, 1, 0, 0);
         targetCtx.clearRect(0, 0, CANVAS_W, CANVAS_H);
-        seg.renderFn(targetCtx, clamp(localT, 0, seg.duration), seg.duration, RENDER_HELPERS);
+        seg.renderFn(targetCtx, clamp(localT, 0, seg.duration), seg.duration, RENDER_HELPERS, RENDER_HELPERS);
         targetCtx.restore();
       }
 
@@ -3686,9 +3971,15 @@
           const dur = activeProject.totalDuration;
 
           if (isRecording) {
-            const elapsed = (timestamp - recordStartTimestamp) / 1000;
-            const nextTime = Math.min(dur, elapsed);
+            const now = performance.now();
+            const rawDelta = Math.max(0, (now - recordLastTick) / 1000);
+            recordLastTick = now;
+            // Relógio controlado por performance.now() com delta limitado para evitar saltos bruscos
+            const wallElapsed = Math.max(0, (now - recordStartTimestamp) / 1000);
+            const stepped = recordClockSec + Math.min(0.08, rawDelta);
+            recordClockSec = Math.min(dur, Math.max(stepped, Math.min(wallElapsed, recordClockSec + 0.12)));
 
+            const nextTime = recordClockSec;
             triggerScheduledSounds(prevTime, nextTime);
             prevTime = nextTime;
             currentTime = nextTime;
@@ -3697,12 +3988,15 @@
             recBadgeText.textContent = `REC ${recPct}%`;
             recBarFill.style.width = `${recPct}%`;
             exportProgressBg.style.width = `${recPct}%`;
-            exportText.textContent = `Gravando 9:16... ${recPct}%`;
+            exportText.textContent = `Gravando... ${currentTime.toFixed(1)}s / ${dur.toFixed(1)}s (${recPct}%)`;
 
             renderFrame(currentTime);
             updatePlayerUI();
 
-            if (elapsed >= dur) {
+            if (currentTime >= dur - 0.004 || wallElapsed >= dur) {
+              triggerScheduledSounds(prevTime, dur);
+              prevTime = dur;
+              currentTime = dur;
               finishRecording();
             }
           } else {
@@ -3738,9 +4032,278 @@
       }
 
       // =======================================================================
-      // 12. EXPORTAÇÃO ROBUSTA 1080×1920 @ 60 FPS COM ÁUDIO (.webm)
+      // 12. EXPORTAÇÃO ROBUSTA 1080×1920 (WEBM PATCHER EBML + MP4 NATIVO)
       // =======================================================================
-      function pickSupportedMimeType() {
+
+      /**
+       * Lê um Element ID EBML (1 a 4 bytes, mantendo o bit marcador).
+       */
+      function readEbmlId(bytes, offset) {
+        if (offset >= bytes.length) return null;
+        const first = bytes[offset];
+        if (first === 0) return null;
+        let len = 1;
+        let mask = 0x80;
+        while ((first & mask) === 0 && len <= 4) {
+          mask >>= 1;
+          len++;
+        }
+        if (len > 4 || offset + len > bytes.length) return null;
+        let id = 0;
+        for (let i = 0; i < len; i++) {
+          id = id * 256 + bytes[offset + i];
+        }
+        return { id, length: len };
+      }
+
+      /**
+       * Lê um tamanho VINT EBML (1 a 8 bytes) usando BigInt para precisão total.
+       */
+      function readEbmlVintSize(bytes, offset) {
+        if (offset >= bytes.length) return null;
+        const first = bytes[offset];
+        if (first === 0) return null;
+        let len = 1;
+        let mask = 0x80;
+        while ((first & mask) === 0 && len <= 8) {
+          mask >>= 1;
+          len++;
+        }
+        if (len > 8 || offset + len > bytes.length) return null;
+        let val = BigInt(first & (mask - 1));
+        for (let i = 1; i < len; i++) {
+          val = (val << 8n) | BigInt(bytes[offset + i]);
+        }
+        const unknownSentinel = (1n << BigInt(7 * len)) - 1n;
+        const isUnknown = val === unknownSentinel;
+        return { value: isUnknown ? -1 : Number(val), length: len, isUnknown };
+      }
+
+      /**
+       * Codifica um tamanho numérico em formato VINT EBML, mantendo ao menos `minLength` bytes
+       * ou expandindo automaticamente se o valor exceder a capacidade do VINT original.
+       */
+      function encodeEbmlVintSize(value, minLength = 1) {
+        const bigVal = BigInt(Math.max(0, Math.round(value)));
+        let len = Math.max(1, minLength);
+        while (len < 8 && bigVal >= (1n << BigInt(7 * len)) - 1n) {
+          len++;
+        }
+        const out = new Uint8Array(len);
+        let tmp = bigVal;
+        for (let i = len - 1; i >= 0; i--) {
+          out[i] = Number(tmp & 0xFFn);
+          tmp >>= 8n;
+        }
+        out[0] |= (1 << (8 - len));
+        return out;
+      }
+
+      /**
+       * Lê um inteiro sem sinal big-endian de `byteLen` bytes (ex: TimestampScale).
+       */
+      function readUintBE(bytes, offset, byteLen) {
+        let val = 0;
+        for (let i = 0; i < byteLen; i++) {
+          val = val * 256 + bytes[offset + i];
+        }
+        return val;
+      }
+
+      /**
+       * PATCHER EBML DE DURAÇÃO EM JAVASCRIPT PURO:
+       * Corrige o bug do MediaRecorder no Chromium onde vídeos .webm ficam sem
+       * metadado Duration (0x4489) no bloco Segment > Info (0x1549A966), evitando
+       * que reprodutores e apps exibam duração infinita ou "mais de 1 hora".
+       */
+      async function patchWebmDuration(blob, durationMs) {
+        try {
+          if (!blob || !Number.isFinite(durationMs) || durationMs <= 0) return blob;
+          const buffer = await blob.arrayBuffer();
+          const bytes = new Uint8Array(buffer);
+          if (bytes.length < 32) return blob;
+
+          // 1. Localiza o elemento Segment (0x18538067) no nível raiz
+          let pos = 0;
+          let segSizePos = -1;
+          let segSize = null;
+          let segDataStart = -1;
+          let segEnd = bytes.length;
+
+          while (pos < bytes.length) {
+            const elId = readEbmlId(bytes, pos);
+            if (!elId) break;
+            const elSizePos = pos + elId.length;
+            const elSize = readEbmlVintSize(bytes, elSizePos);
+            if (!elSize) break;
+            const elDataStart = elSizePos + elSize.length;
+
+            if (elId.id === 0x18538067) {
+              segSizePos = elSizePos;
+              segSize = elSize;
+              segDataStart = elDataStart;
+              segEnd = elSize.isUnknown ? bytes.length : Math.min(bytes.length, elDataStart + elSize.value);
+              break;
+            }
+            if (elSize.isUnknown) break;
+            pos = elDataStart + elSize.value;
+          }
+
+          if (segDataStart === -1 || !segSize) return blob;
+
+          // 2. Localiza o elemento Info (0x1549A966) dentro do Segment
+          let infoSizePos = -1;
+          let infoSize = null;
+          let infoDataStart = -1;
+          let infoEnd = -1;
+
+          pos = segDataStart;
+          while (pos < segEnd) {
+            const elId = readEbmlId(bytes, pos);
+            if (!elId) break;
+            const elSizePos = pos + elId.length;
+            const elSize = readEbmlVintSize(bytes, elSizePos);
+            if (!elSize) break;
+            const elDataStart = elSizePos + elSize.length;
+
+            if (elId.id === 0x1549A966) {
+              infoSizePos = elSizePos;
+              infoSize = elSize;
+              infoDataStart = elDataStart;
+              infoEnd = elSize.isUnknown ? segEnd : Math.min(segEnd, elDataStart + elSize.value);
+              break;
+            }
+            // Se chegou em Cluster antes de achar Info, interrompe busca com segurança
+            if (elId.id === 0x1F43B675 || elSize.isUnknown) break;
+            pos = elDataStart + elSize.value;
+          }
+
+          if (infoDataStart === -1 || !infoSize) return blob;
+
+          // 3. Varre filhos do Info buscando TimestampScale (0x2AD7B1) e Duration (0x4489)
+          const TOP_LEVEL_IDS = new Set([0x1654AE6B, 0x1F43B675, 0x1C53BB6B, 0x114D9B74, 0x1043A770, 0x1254C367, 0x1941A469]);
+          let timestampScale = 1000000; // Padrão Matroska/WebM = 1ms em nanossegundos
+          let durationPos = -1;
+          let durationByteLen = 0;
+          let insertPos = infoEnd;
+
+          pos = infoDataStart;
+          while (pos < infoEnd) {
+            const childId = readEbmlId(bytes, pos);
+            if (!childId) break;
+            if (infoSize.isUnknown && TOP_LEVEL_IDS.has(childId.id)) {
+              insertPos = pos;
+              break;
+            }
+            const childSizePos = pos + childId.length;
+            const childSize = readEbmlVintSize(bytes, childSizePos);
+            if (!childSize || childSize.isUnknown) break;
+            const childDataStart = childSizePos + childSize.length;
+            const childEnd = childDataStart + childSize.value;
+            if (childEnd > infoEnd) break;
+
+            if (childId.id === 0x2AD7B1 && childSize.value > 0 && childSize.value <= 8) {
+              const scale = readUintBE(bytes, childDataStart, childSize.value);
+              if (scale > 0) timestampScale = scale;
+            } else if (childId.id === 0x4489) {
+              durationPos = childDataStart;
+              durationByteLen = childSize.value;
+            }
+
+            pos = childEnd;
+            insertPos = pos;
+          }
+
+          const durationUnits = (durationMs * 1000000) / timestampScale;
+
+          // 4A. Se Duration (0x4489) já existe (4 ou 8 bytes), sobrescreve o float big-endian
+          if (durationPos !== -1 && (durationByteLen === 4 || durationByteLen === 8)) {
+            const patched = new Uint8Array(bytes);
+            const dv = new DataView(patched.buffer);
+            if (durationByteLen === 4) {
+              dv.setFloat32(durationPos, durationUnits, false);
+            } else {
+              dv.setFloat64(durationPos, durationUnits, false);
+            }
+            return new Blob([patched], { type: blob.type || 'video/webm' });
+          }
+
+          // 4B. Se não existe, insere o elemento de 11 bytes [0x44, 0x89, 0x88, ...float64BE]
+          const durationEl = new Uint8Array(11);
+          durationEl[0] = 0x44;
+          durationEl[1] = 0x89;
+          durationEl[2] = 0x88; // VINT tamanho = 8 bytes
+          new DataView(durationEl.buffer).setFloat64(3, durationUnits, false);
+
+          let newInfoVint = null;
+          let infoVintDelta = 0;
+          if (!infoSize.isUnknown) {
+            const newInfoPayloadSize = infoSize.value + durationEl.length;
+            newInfoVint = encodeEbmlVintSize(newInfoPayloadSize, infoSize.length);
+            infoVintDelta = newInfoVint.length - infoSize.length;
+          }
+
+          const totalDelta = durationEl.length + infoVintDelta;
+          let newSegVint = null;
+          let segVintDelta = 0;
+          if (!segSize.isUnknown) {
+            const newSegPayloadSize = segSize.value + totalDelta;
+            newSegVint = encodeEbmlVintSize(newSegPayloadSize, segSize.length);
+            segVintDelta = newSegVint.length - segSize.length;
+          }
+
+          // Remonta o buffer final preservando todos os chunks intactos
+          const parts = [];
+          let cursor = 0;
+
+          if (newSegVint) {
+            parts.push(bytes.subarray(cursor, segSizePos));
+            parts.push(newSegVint);
+            cursor = segSizePos + segSize.length;
+          }
+
+          if (newInfoVint) {
+            parts.push(bytes.subarray(cursor, infoSizePos));
+            parts.push(newInfoVint);
+            cursor = infoSizePos + infoSize.length;
+          }
+
+          parts.push(bytes.subarray(cursor, insertPos));
+          parts.push(durationEl);
+          parts.push(bytes.subarray(insertPos));
+
+          const finalSize = bytes.length + totalDelta + segVintDelta;
+          const out = new Uint8Array(finalSize);
+          let writeOffset = 0;
+          for (let i = 0; i < parts.length; i++) {
+            out.set(parts[i], writeOffset);
+            writeOffset += parts[i].length;
+          }
+
+          return new Blob([out], { type: blob.type || 'video/webm' });
+        } catch (err) {
+          // Fallback seguro: nunca quebra o download
+          return blob;
+        }
+      }
+
+      function detectSupportedMp4MimeType() {
+        if (typeof MediaRecorder === 'undefined') return null;
+        const candidates = [
+          'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
+          'video/mp4;codecs=avc1.4d002a,mp4a.40.2',
+          'video/mp4;codecs=avc1,mp4a.40.2',
+          'video/mp4'
+        ];
+        for (const mime of candidates) {
+          try {
+            if (MediaRecorder.isTypeSupported(mime)) return mime;
+          } catch (err) { /* ignora */ }
+        }
+        return null;
+      }
+
+      function pickSupportedWebmMimeType() {
         if (typeof MediaRecorder === 'undefined') return null;
         const candidates = [
           'video/webm;codecs=vp9,opus',
@@ -3750,11 +4313,32 @@
           'video/webm'
         ];
         for (const mime of candidates) {
-          if (MediaRecorder.isTypeSupported(mime)) {
-            return mime;
-          }
+          try {
+            if (MediaRecorder.isTypeSupported(mime)) return mime;
+          } catch (err) { /* ignora */ }
         }
         return '';
+      }
+
+      function updateExportButtonLabel() {
+        if (isRecording) return;
+        const ext = exportFormatSelect.value === 'mp4' && supportedMp4Mime ? 'mp4' : 'webm';
+        exportText.textContent = `Exportar Vídeo 9:16 (.${ext})`;
+      }
+
+      function initExportSelectors() {
+        supportedMp4Mime = detectSupportedMp4MimeType();
+        if (supportedMp4Mime) {
+          exportMp4Option.disabled = false;
+          exportMp4Option.textContent = 'MP4 (Nativo)';
+          exportMp4Option.title = `Codec suportado: ${supportedMp4Mime}`;
+        } else {
+          exportMp4Option.disabled = true;
+          exportMp4Option.textContent = 'MP4 (Indisponível neste navegador)';
+          exportMp4Option.title = 'Este navegador não suporta gravação nativa em MP4; use WebM (Duração Corrigida).';
+          exportFormatSelect.value = 'webm';
+        }
+        updateExportButtonLabel();
       }
 
       function setExportingLock(locked) {
@@ -3762,7 +4346,10 @@
         btnPlayPause.disabled = locked;
         btnRestart.disabled = locked;
         btnOpenJsonModal.disabled = locked;
+        btnOpenAiGuide.disabled = locked;
         btnOpenLibrary.disabled = locked;
+        exportFormatSelect.disabled = locked;
+        exportQualitySelect.disabled = locked;
         scrubber.classList.toggle('disabled', locked);
         scenePillElements.forEach((p) => { p.disabled = locked; });
       }
@@ -3776,19 +4363,30 @@
             return;
           }
 
-          const mimeType = pickSupportedMimeType();
+          const wantMp4 = exportFormatSelect.value === 'mp4' && Boolean(supportedMp4Mime);
+          const mimeType = wantMp4 ? supportedMp4Mime : pickSupportedWebmMimeType();
           if (mimeType === null) {
-            showToast('Formato WebM não suportado neste navegador.', 'error');
+            showToast('Formato de gravação não suportado neste navegador.', 'error');
             return;
           }
 
+          const qualityKey = exportQualitySelect.value in EXPORT_QUALITY_PRESETS ? exportQualitySelect.value : 'standard';
+          const preset = EXPORT_QUALITY_PRESETS[qualityKey];
+          const targetDuration = activeProject.totalDuration;
+          const fileExt = wantMp4 ? 'mp4' : 'webm';
+          const downloadName = `${slugify(activeProject.title)}-9x16.${fileExt}`;
+
           await ensureAudioReady();
+          if (audioCtx && audioCtx.state === 'suspended') {
+            await audioCtx.resume();
+          }
           hideStartOverlay();
 
           wasPlayingBeforeRecord = isPlaying;
           isPlaying = false;
           currentTime = 0;
           prevTime = -0.001;
+          recordClockSec = 0;
           recordedChunks = [];
 
           // UI entra em modo de preparação (pré-roll de 120ms)
@@ -3799,7 +4397,7 @@
           recBadgeText.textContent = 'REC 0%';
           exportText.textContent = 'Preparando áudio...';
 
-          // Pré-roll de 120ms: inicia keep-alive silencioso e desenha frame 0 antes do MediaRecorder
+          // Pré-roll de 120ms com oscilador keep-alive silencioso (ganho 0.0001)
           startRecordingAudioKeepAlive();
           renderFrame(0);
           updatePlayerUI();
@@ -3807,8 +4405,8 @@
           await new Promise((resolve) => setTimeout(resolve, 120));
           renderFrame(0);
 
-          // Combina stream de vídeo 60 FPS + áudio sintetizado
-          activeVideoStream = canvas.captureStream(60);
+          // Captura respeitando exatamente o FPS escolhido (30 ou 60 FPS) + áudio sintetizado
+          activeVideoStream = canvas.captureStream(preset.fps);
           const combinedTracks = [...activeVideoStream.getVideoTracks()];
           if (recordDest && recordDest.stream) {
             recordDest.stream.getAudioTracks().forEach((track) => combinedTracks.push(track));
@@ -3816,14 +4414,13 @@
           const combinedStream = new MediaStream(combinedTracks);
 
           const options = {
-            videoBitsPerSecond: 12000000,
-            audioBitsPerSecond: 192000
+            videoBitsPerSecond: preset.videoBitsPerSecond,
+            audioBitsPerSecond: preset.audioBitsPerSecond
           };
           if (mimeType) {
             options.mimeType = mimeType;
           }
 
-          const downloadName = `${slugify(activeProject.title)}-9x16.webm`;
           activeRecorder = new MediaRecorder(combinedStream, options);
 
           activeRecorder.ondataavailable = (event) => {
@@ -3837,10 +4434,19 @@
             showToast('Erro durante a codificação do vídeo 9:16.', 'error');
           };
 
-          activeRecorder.onstop = () => {
+          activeRecorder.onstop = async () => {
             try {
-              const blob = new Blob(recordedChunks, { type: mimeType || 'video/webm' });
-              const url = URL.createObjectURL(blob);
+              const rawBlob = new Blob(recordedChunks, { type: mimeType || `video/${fileExt}` });
+              let finalBlob = rawBlob;
+
+              // Corrige metadado EBML Duration no WebM para exibir a duração real exata
+              if (!wantMp4) {
+                exportText.textContent = 'Corrigindo metadados de duração...';
+                finalBlob = await patchWebmDuration(rawBlob, Math.round(targetDuration * 1000));
+              }
+
+              const sizeMb = (finalBlob.size / (1024 * 1024)).toFixed(1);
+              const url = URL.createObjectURL(finalBlob);
 
               const link = document.createElement('a');
               link.href = url;
@@ -3850,7 +4456,7 @@
               document.body.removeChild(link);
 
               setTimeout(() => URL.revokeObjectURL(url), 6000);
-              showToast(`Vídeo "${downloadName}" baixado com sucesso!`);
+              showToast(`Exportado: ${downloadName} · ${targetDuration.toFixed(1)}s · ${sizeMb} MB`);
             } catch (err) {
               showToast('Não foi possível salvar o arquivo de vídeo.', 'error');
             } finally {
@@ -3858,11 +4464,12 @@
             }
           };
 
-          // Timeslice de 100ms garante estabilidade em vídeos de até 60 segundos
+          // Timeslice de 100ms garante gravação estável até 60 segundos
           isRecording = true;
           isPlaying = true;
-          exportText.textContent = 'Gravando 9:16... 0%';
           recordStartTimestamp = performance.now();
+          recordLastTick = recordStartTimestamp;
+          exportText.textContent = `Gravando... 0.0s / ${targetDuration.toFixed(1)}s (0%)`;
           activeRecorder.start(100);
         } catch (err) {
           cleanupRecordingUI();
@@ -3875,7 +4482,7 @@
         const dur = activeProject ? activeProject.totalDuration : 0;
         renderFrame(dur);
 
-        // Cauda de 260ms para capturar o final do último efeito sonoro sem cortes
+        // Cauda curta de 150ms para finalizar o último som sem alongar o vídeo
         setTimeout(() => {
           try {
             stopRecordingAudioKeepAlive();
@@ -3889,7 +4496,7 @@
           } catch (err) {
             cleanupRecordingUI();
           }
-        }, 260);
+        }, 150);
       }
 
       function cleanupRecordingUI() {
@@ -3898,6 +4505,7 @@
         isPlaying = wasPlayingBeforeRecord;
         currentTime = 0;
         prevTime = -0.001;
+        recordClockSec = 0;
 
         setExportingLock(false);
         btnExport.classList.remove('recording');
@@ -3905,7 +4513,7 @@
         recBarOverlay.classList.remove('active');
         recBarFill.style.width = '0%';
         exportProgressBg.style.width = '0%';
-        exportText.textContent = 'Exportar Vídeo 9:16 (.webm)';
+        updateExportButtonLabel();
         updatePlayPauseButton();
       }
 
@@ -4224,11 +4832,197 @@
         if (activeProject) downloadJsonObject(activeProject.raw);
       });
 
+      // =======================================================================
+      // 14B. MODAL "GUIA PARA IA" (PROMPT MESTRE + CONTINUAÇÃO + PRÉVIA SFX)
+      // =======================================================================
+      function copyTextSafely(text) {
+        try {
+          const temp = document.createElement('textarea');
+          temp.value = text;
+          temp.setAttribute('readonly', '');
+          temp.style.position = 'fixed';
+          temp.style.top = '-9999px';
+          temp.style.opacity = '0';
+          document.body.appendChild(temp);
+          temp.focus();
+          temp.select();
+          const ok = document.execCommand('copy');
+          document.body.removeChild(temp);
+          return ok;
+        } catch (err) {
+          return false;
+        }
+      }
+
+      function buildCreateVideoPrompt() {
+        return [
+          'Atue como um Diretor de Animação Procedural 2D especialista em HTML5 Canvas e Web Audio API.',
+          'Crie um vídeo animado vertical 9:16 (1080x1920) para o CineCode JSON Studio e devolva APENAS um bloco JSON válido, sem explicações fora do JSON.',
+          '',
+          'CONTRATO JSON OBRIGATÓRIO:',
+          '{',
+          '  "title": "Título curto e chamativo",',
+          '  "subtitle": "Descrição curta em 1 frase",',
+          '  "duration": 12.0,',
+          '  "subtitlePosition": "top",',
+          '  "segments": [',
+          '    {',
+          '      "id": "seg-1",',
+          '      "title": "1. Nome da Cena",',
+          '      "duration": 6.0,',
+          '      "cameraLabel": "PAN SUAVE · 1.0x",',
+          '      "transitionIn": "cut",',
+          '      "soundTriggers": [',
+          '        { "time": 1.2, "type": "footstep", "volume": 0.9 }',
+          '      ],',
+          '      "renderBody": "// JS puro usando ctx, t (0..duration do segmento), duration e h"',
+          '    }',
+          '  ]',
+          '}',
+          '',
+          'REGRAS TÉCNICAS DO MOTOR:',
+          '1. Canvas interno fixo: 1080x1920 (9:16). Soma das durações dos segmentos: até 60.0s. Transições aceitas em transitionIn: "cut", "fade" ou "zoom".',
+          '2. renderBody é o corpo de (ctx, t, duration, h) => { ... } e DEVE ser 100% determinístico em função de `t` (NUNCA use variáveis acumulativas entre frames). Zero imagens/fontes/URLs externas.',
+          '3. Helpers disponíveis no objeto `h`: h.clamp(v,min,max), h.lerp(a,b,p), h.invLerp(a,b,v), h.easeInOutCubic(x), h.easeOutCubic(x), h.easeOutBack(x), h.easeOutQuad(x), h.smoothstep(e0,e1,x), h.roundRect(ctx,x,y,w,h,r), h.drawShadow(ctx,x,y,rx,ry,alpha), h.drawImpactRings(ctx,x,y,progress,color), h.drawSubtitle(ctx, text, progress), h.setCameraLabel(label).',
+          '4. Efeitos sonoros prontos para soundTriggers[].type: woodKnock, footstep, pop, whoosh, chime, whistle, bark, meow, boing, impact, crash, applause, sadTrombone, laser, splash, doorCreak, bell, alert. Opcionalmente use "customCode" com JS Web Audio (recebe ctx, dest, vol).',
+          '5. Composição 9:16 cinematográfica: mantenha a ação principal no centro (Y entre 850 e 1450), deixando topo (Y até 420) e base (Y acima de 1520) livres para legendas. Use câmera virtual (pan + zoom), paralaxe no fundo, sombras ovais no chão, cenários vivos (nuvens, partículas, luzes) e personagens articulados com movimento orgânico contínuo (proibido T-pose estático).',
+          '6. Mantenha o código dentro de renderBody compacto (variáveis curtas e sem espaços extras) para garantir que o JSON nunca seja truncado e feche todas as chaves perfeitamente.',
+          '',
+          'IDEIA DO VÍDEO: [COLE SUA IDEIA AQUI]'
+        ].join('\n');
+      }
+
+      function buildContinueStoryPrompt() {
+        const title = activeProject ? activeProject.title : 'Vídeo Atual';
+        const currentDur = activeProject ? activeProject.totalDuration : 0;
+        const remaining = Math.max(0, MAX_DURATION - currentDur);
+        const suggestedSegDur = Math.min(8, Math.max(4, Math.floor(remaining))).toFixed(1);
+        const scenesList = activeProject && activeProject.scenes
+          ? activeProject.scenes.map((sc, i) => `  ${i + 1}. ${sc.name} (${sc.start.toFixed(1)}s – ${sc.end.toFixed(1)}s)`).join('\n')
+          : '  1. Cena inicial';
+
+        return [
+          'Atue como Diretor de Animação Procedural 2D para o CineCode JSON Studio.',
+          'Gere APENAS o JSON do PRÓXIMO SEGMENTO para continuar a história abaixo (vou colar usando "+ Anexar como Próxima Cena"). Não reescreva cenas anteriores e devolva somente o bloco JSON válido.',
+          '',
+          'CONTEXTO DO VÍDEO ATUAL:',
+          `- Título: ${title}`,
+          `- Duração atual: ${currentDur.toFixed(1)}s (espaço restante até o limite de 60s: ${remaining.toFixed(1)}s)`,
+          '- Cenas já existentes:',
+          scenesList,
+          '',
+          'REGRAS PARA ESTA CONTINUAÇÃO:',
+          `- Duração sugerida para o novo segmento: até ${suggestedSegDur}s (nunca ultrapassar ${remaining.toFixed(1)}s restantes).`,
+          '- Mantenha exatamente os mesmos personagens, paleta de cores, proporções e estilo visual das cenas anteriores.',
+          '- Use transitionIn: "fade" ou "zoom", canvas 1080x1920, ação principal entre Y=850 e Y=1450, câmera virtual, animações determinísticas em `t` usando o objeto `h`, legendas com h.drawSubtitle(ctx, texto, progresso) e código compacto.',
+          '- Sons prontos: woodKnock, footstep, pop, whoosh, chime, whistle, bark, meow, boing, impact, crash, applause, sadTrombone, laser, splash, doorCreak, bell, alert.',
+          '',
+          'FORMATO EXATO DE SAÍDA (APENAS 1 SEGMENTO NOVO):',
+          '{',
+          `  "title": "${title} — Continuação",`,
+          '  "segments": [',
+          '    {',
+          '      "id": "seg-proximo",',
+          '      "title": "Próxima Cena",',
+          `      "duration": ${suggestedSegDur},`,
+          '      "cameraLabel": "PAN · 1.1x",',
+          '      "transitionIn": "fade",',
+          '      "soundTriggers": [ { "time": 0.4, "type": "whoosh", "volume": 0.9 } ],',
+          '      "renderBody": "// JS puro compacto (ctx, t, duration, h)"',
+          '    }',
+          '  ]',
+          '}',
+          '',
+          'O QUE ACONTECE NESTA PRÓXIMA CENA: [DESCREVA A CONTINUAÇÃO AQUI]'
+        ].join('\n');
+      }
+
+      function renderAiGuideTab(tab) {
+        activeGuideTab = tab;
+        const isNew = tab === 'new';
+        tabNewVideoPrompt.classList.toggle('active', isNew);
+        tabNewVideoPrompt.setAttribute('aria-selected', String(isNew));
+        tabContinuePrompt.classList.toggle('active', !isNew);
+        tabContinuePrompt.setAttribute('aria-selected', String(!isNew));
+
+        if (isNew) {
+          aiPromptHint.innerHTML = 'Cole este prompt na sua IA favorita substituindo apenas <strong>[COLE SUA IDEIA AQUI]</strong>. Depois, cole o JSON retornado em <strong>+ Novo Vídeo (JSON)</strong>.';
+          aiPromptTextarea.value = buildCreateVideoPrompt();
+          copyAiPromptLabel.textContent = 'Copiar Prompt Mestre';
+        } else {
+          const rem = activeProject ? Math.max(0, MAX_DURATION - activeProject.totalDuration).toFixed(1) : '60.0';
+          aiPromptHint.innerHTML = `Já preenchido com o projeto atual (restam <strong>${rem}s</strong> até o teto de 60s). Depois, cole a resposta usando <strong>+ Anexar como Próxima Cena</strong>.`;
+          aiPromptTextarea.value = buildContinueStoryPrompt();
+          copyAiPromptLabel.textContent = 'Copiar Prompt de Continuação';
+        }
+      }
+
+      function renderSfxPreviewTags() {
+        sfxTagsGrid.innerHTML = '';
+        const names = Object.keys(SFX_LIB);
+        names.forEach((name, idx) => {
+          const btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'sfx-tag';
+          btn.title = `Ouvir prévia do som "${name}"`;
+          btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg><span>${name}</span>`;
+          btn.addEventListener('click', async () => {
+            await ensureAudioReady();
+            if (isMuted) {
+              isMuted = false;
+              updateMuteButton();
+            }
+            playSoundTrigger({ type: name, volume: 1.0 }, idx);
+            btn.classList.add('playing');
+            setTimeout(() => btn.classList.remove('playing'), 260);
+          });
+          sfxTagsGrid.appendChild(btn);
+        });
+      }
+
+      function openAiGuideModal() {
+        if (isRecording) return;
+        renderAiGuideTab(activeGuideTab);
+        aiGuideModal.classList.add('open');
+        aiGuideModal.setAttribute('aria-hidden', 'false');
+      }
+
+      function closeAiGuideModal() {
+        aiGuideModal.classList.remove('open');
+        aiGuideModal.setAttribute('aria-hidden', 'true');
+      }
+
+      btnOpenAiGuide.addEventListener('click', openAiGuideModal);
+      btnCloseAiGuide.addEventListener('click', closeAiGuideModal);
+      aiGuideModal.addEventListener('click', (e) => {
+        if (e.target === aiGuideModal) closeAiGuideModal();
+      });
+      tabNewVideoPrompt.addEventListener('click', () => renderAiGuideTab('new'));
+      tabContinuePrompt.addEventListener('click', () => renderAiGuideTab('continue'));
+
+      btnCopyAiPrompt.addEventListener('click', () => {
+        const ok = copyTextSafely(aiPromptTextarea.value);
+        if (ok) {
+          showToast(
+            activeGuideTab === 'new'
+              ? 'Prompt Mestre copiado! Agora cole na sua IA.'
+              : 'Prompt de Continuação copiado! Agora cole na sua IA.'
+          );
+        } else {
+          aiPromptTextarea.focus();
+          aiPromptTextarea.select();
+          showToast('Texto selecionado — pressione Ctrl+C para copiar.', 'amber');
+        }
+      });
+
+      exportFormatSelect.addEventListener('change', updateExportButtonLabel);
+
       // Fechar modais com tecla ESC
       document.addEventListener('keydown', (e) => {
         if (e.key === 'Escape') {
           if (jsonModal.classList.contains('open')) closeJsonModal();
           if (libraryModal.classList.contains('open')) closeLibraryModal();
+          if (aiGuideModal.classList.contains('open')) closeAiGuideModal();
         }
       });
 
@@ -4369,6 +5163,8 @@
       // =======================================================================
       window.addEventListener('load', () => {
         loadLibraryFromStorage();
+        initExportSelectors();
+        renderSfxPreviewTags();
         updatePlayPauseButton();
         updateMuteButton();
         applySubtitleModeUI();
