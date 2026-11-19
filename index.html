@@ -1634,6 +1634,58 @@
         align-items: stretch;
       }
     }
+    .voice-bar {
+      display: flex;
+      flex-direction: column;
+      gap: 7px;
+      padding: 10px 12px;
+      border-radius: var(--radius-lg);
+      background: rgba(139, 92, 246, 0.08);
+      border: 1px solid rgba(139, 92, 246, 0.28);
+    }
+    .voice-bar-row {
+      display: flex;
+      align-items: center;
+      gap: 7px;
+      flex-wrap: wrap;
+    }
+    .voice-select {
+      flex: 1;
+      min-width: 140px;
+      min-height: 34px;
+      padding: 0 26px 0 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+      background-color: var(--bg-elevated);
+      color: var(--text-primary);
+      font-size: 0.74rem;
+      outline: none;
+    }
+    .btn-voice-sm {
+      min-height: 34px;
+      padding: 0 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+      color: var(--text-primary);
+      font-size: 0.74rem;
+      font-weight: 600;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+    }
+    .btn-voice-sm:hover { background: var(--bg-hover); border-color: var(--border-strong); }
+    .btn-voice-sm.active { background: rgba(139, 92, 246, 0.25); border-color: rgba(167, 139, 250, 0.55); color: #ede9fe; }
+    .btn-voice-sm.rec-mic { background: rgba(239, 68, 68, 0.28); border-color: rgba(239, 68, 68, 0.75); color: #fecaca; }
+    .voice-status-line {
+      font-size: 0.7rem;
+      color: var(--text-secondary);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+    }
   </style>
 </head>
 
@@ -1863,7 +1915,24 @@
             <span>Guias Reels/TikTok</span>
           </button>
         </div>
-
+<!-- Controle de Narrador (TTS) e Faixa de Voz Exportável -->
+        <div class="voice-bar">
+          <div class="voice-bar-row">
+            <button type="button" class="btn-voice-sm active" id="btnNarrationToggle">
+              <span id="narrationToggleText">Narrador: On</span>
+            </button>
+            <select class="voice-select" id="voiceSelect" aria-label="Voz do narrador">
+              <option value="">Voz automática (pt-BR)</option>
+            </select>
+            <button type="button" class="btn-voice-sm" id="btnRecordVoice" title="Grava sua voz pelo microfone acompanhando o vídeo para sair no arquivo exportado">Gravar Mic</button>
+            <button type="button" class="btn-voice-sm" id="btnUploadVoice" title="Importar narração .mp3/.wav para sair no vídeo exportado">Subir Voz</button>
+            <input type="file" id="voiceFileInput" accept="audio/*" style="display:none;" />
+            <button type="button" class="btn-voice-sm" id="btnClearVoice" style="display:none;" title="Remover faixa de voz">× Limpar</button>
+          </div>
+          <div class="voice-status-line">
+            <span id="voiceTrackStatus">TTS ao vivo ativo. Para embutir voz no arquivo exportado, grave no Mic ou suba um .mp3/.wav.</span>
+          </div>
+        </div>
         <!-- Seção de Exportação: Formato, Qualidade/Peso e Download -->
         <div class="export-panel">
           <div class="export-options-row">
@@ -2571,13 +2640,101 @@
       // =======================================================================
       // 5. MOTOR DE ÁUDIO PROCEDURAL (WEB AUDIO API — 18 SFX + CUSTOM)
       // =======================================================================
+      // =======================================================================
+      // 5. MOTOR DE ÁUDIO LIVRE v2 (REVERB + MÚSICA + AMBIÊNCIA + SFX + VOZ)
+      // =======================================================================
       let audioCtx = null;
       let synthBus = null;
+      let voiceBus = null;
+      let reverbNode = null;
+      let reverbReturn = null;
       let speakerGain = null;
       let recordDest = null;
       let noiseBuffer = null;
+      let pinkNoiseBuffer = null;
       let keepAliveOsc = null;
       let keepAliveGain = null;
+
+      // Controle de nós contínuos, ambiências e narrador
+      const activeAudioNodes = new Set();
+      const activeAmbienceStops = new Map();
+      let narrationEnabled = true;
+      let selectedVoiceURI = '';
+      let customVoiceBuffer = null;
+      let customVoiceNode = null;
+      let micRecorder = null;
+      let micStream = null;
+      let micChunks = [];
+      let isRecordingMic = false;
+
+      const btnNarrationToggle = document.getElementById('btnNarrationToggle');
+      const narrationToggleText = document.getElementById('narrationToggleText');
+      const voiceSelect = document.getElementById('voiceSelect');
+      const btnRecordVoice = document.getElementById('btnRecordVoice');
+      const btnUploadVoice = document.getElementById('btnUploadVoice');
+      const voiceFileInput = document.getElementById('voiceFileInput');
+      const btnClearVoice = document.getElementById('btnClearVoice');
+      const voiceTrackStatus = document.getElementById('voiceTrackStatus');
+
+      function trackNode(node) {
+        if (!node) return node;
+        activeAudioNodes.add(node);
+        if ('onended' in node) {
+          const prev = node.onended;
+          node.onended = (ev) => {
+            activeAudioNodes.delete(node);
+            if (typeof prev === 'function') prev(ev);
+          };
+        }
+        return node;
+      }
+
+      function stopAllContinuousAudio(isLoopWrap = false) {
+        activeAudioNodes.forEach((node) => {
+          try { if (typeof node.stop === 'function') node.stop(); } catch (e) {}
+          try { if (typeof node.disconnect === 'function') node.disconnect(); } catch (e) {}
+        });
+        activeAudioNodes.clear();
+
+        activeAmbienceStops.forEach((stopFn) => {
+          try { stopFn(); } catch (e) {}
+        });
+        activeAmbienceStops.clear();
+
+        if (customVoiceNode) {
+          try { customVoiceNode.stop(); customVoiceNode.disconnect(); } catch (e) {}
+          customVoiceNode = null;
+        }
+
+        if (!isLoopWrap && typeof window !== 'undefined' && 'speechSynthesis' in window) {
+          try { window.speechSynthesis.cancel(); } catch (e) {}
+        }
+      }
+
+      function noteToFreq(note) {
+        if (typeof note === 'number' && Number.isFinite(note)) return note;
+        const m = String(note || '').trim().match(/^([A-Ga-g])([#b]?)(-?\d)$/);
+        if (!m) return 220;
+        const map = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+        let semi = map[m[1].toUpperCase()];
+        if (m[2] === '#') semi += 1;
+        if (m[2] === 'b') semi -= 1;
+        const midi = (parseInt(m[3], 10) + 1) * 12 + semi;
+        return 440 * Math.pow(2, (midi - 69) / 12);
+      }
+
+      function createImpulseResponse(ac, durationSec = 2.1, decay = 2.6) {
+        const sr = ac.sampleRate;
+        const len = Math.floor(sr * durationSec);
+        const ir = ac.createBuffer(2, len, sr);
+        for (let ch = 0; ch < 2; ch++) {
+          const data = ir.getChannelData(ch);
+          for (let i = 0; i < len; i++) {
+            data[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, decay);
+          }
+        }
+        return ir;
+      }
 
       async function ensureAudioReady() {
         try {
@@ -2592,10 +2749,20 @@
             compressor.knee.setValueAtTime(18, audioCtx.currentTime);
             compressor.ratio.setValueAtTime(4, audioCtx.currentTime);
             compressor.attack.setValueAtTime(0.002, audioCtx.currentTime);
-            compressor.release.setValueAtTime(0.12, audioCtx.currentTime);
+            compressor.release.setValueAtTime(0.14, audioCtx.currentTime);
 
             synthBus = audioCtx.createGain();
             synthBus.gain.setValueAtTime(1.0, audioCtx.currentTime);
+
+            voiceBus = audioCtx.createGain();
+            voiceBus.gain.setValueAtTime(1.1, audioCtx.currentTime);
+
+            reverbNode = audioCtx.createConvolver();
+            reverbNode.buffer = createImpulseResponse(audioCtx, 2.2, 2.7);
+            reverbReturn = audioCtx.createGain();
+            reverbReturn.gain.setValueAtTime(0.55, audioCtx.currentTime);
+            reverbNode.connect(reverbReturn);
+            reverbReturn.connect(synthBus);
 
             speakerGain = audioCtx.createGain();
             speakerGain.gain.setValueAtTime(isMuted ? 0 : 1.0, audioCtx.currentTime);
@@ -2603,17 +2770,30 @@
             recordDest = audioCtx.createMediaStreamDestination();
 
             synthBus.connect(compressor);
+            voiceBus.connect(compressor);
             compressor.connect(speakerGain);
             speakerGain.connect(audioCtx.destination);
             compressor.connect(recordDest);
 
-            // Buffer de 1.5s de ruído branco para efeitos de impacto, aplausos, passos, vidro etc.
+            // Ruído branco (2s) e ruído rosa (2s — muito mais natural p/ chuva, vento e trovão)
             const sr = audioCtx.sampleRate;
-            const len = Math.floor(sr * 1.5);
+            const len = Math.floor(sr * 2.0);
             noiseBuffer = audioCtx.createBuffer(1, len, sr);
-            const ch = noiseBuffer.getChannelData(0);
+            pinkNoiseBuffer = audioCtx.createBuffer(1, len, sr);
+            const wData = noiseBuffer.getChannelData(0);
+            const pData = pinkNoiseBuffer.getChannelData(0);
+            let b0 = 0, b1 = 0, b2 = 0, b3 = 0, b4 = 0, b5 = 0, b6 = 0;
             for (let i = 0; i < len; i++) {
-              ch[i] = Math.random() * 2 - 1;
+              const white = Math.random() * 2 - 1;
+              wData[i] = white;
+              b0 = 0.99886 * b0 + white * 0.0555179;
+              b1 = 0.99332 * b1 + white * 0.0750759;
+              b2 = 0.96900 * b2 + white * 0.1538520;
+              b3 = 0.86650 * b3 + white * 0.3104856;
+              b4 = 0.55000 * b4 + white * 0.5329522;
+              b5 = -0.7616 * b5 - white * 0.0168980;
+              pData[i] = (b0 + b1 + b2 + b3 + b4 + b5 + b6 + white * 0.5362) * 0.11;
+              b6 = white * 0.115926;
             }
           }
 
@@ -2637,7 +2817,7 @@
           keepAliveOsc.connect(keepAliveGain);
           keepAliveGain.connect(recordDest);
           keepAliveOsc.start();
-        } catch (err) { /* silencioso */ }
+        } catch (err) {}
       }
 
       function stopRecordingAudioKeepAlive() {
@@ -2650,510 +2830,664 @@
         }
       }
 
-      /**
-       * Biblioteca completa de 18 efeitos sonoros sintetizados via Web Audio API.
-       */
+      // Toolkit livre `a` passado para customCode de SFX e Ambiências
+      function createAudioToolkit(ac, dest) {
+        return {
+          noise: noiseBuffer,
+          pinkNoise: pinkNoiseBuffer,
+          reverb: reverbNode,
+          note: noteToFreq,
+          track: trackNode,
+          osc(opts = {}) {
+            const now = ac.currentTime + (opts.delay || 0.002);
+            const dur = Math.max(0.03, opts.duration || 0.35);
+            const o = trackNode(ac.createOscillator());
+            const g = ac.createGain();
+            o.type = opts.type || 'sine';
+            const f1 = noteToFreq(opts.freq || 440);
+            o.frequency.setValueAtTime(f1, now);
+            if (opts.freqEnd) {
+              o.frequency.exponentialRampToValueAtTime(Math.max(20, noteToFreq(opts.freqEnd)), now + dur);
+            }
+            const atk = Math.min(dur * 0.45, opts.attack || 0.01);
+            const peak = clamp(opts.gain !== undefined ? opts.gain : 0.35, 0.001, 1.5);
+            g.gain.setValueAtTime(0.0001, now);
+            g.gain.linearRampToValueAtTime(peak, now + atk);
+            g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+
+            let out = o;
+            if (opts.filterFreq) {
+              const f = ac.createBiquadFilter();
+              f.type = opts.filterType || 'lowpass';
+              f.frequency.setValueAtTime(opts.filterFreq, now);
+              if (opts.filterEnd) f.frequency.exponentialRampToValueAtTime(Math.max(40, opts.filterEnd), now + dur);
+              f.Q.setValueAtTime(opts.Q || 1.2, now);
+              o.connect(f);
+              out = f;
+            }
+            out.connect(g);
+            g.connect(dest);
+            if (opts.reverb && reverbNode) {
+              const rv = ac.createGain();
+              rv.gain.setValueAtTime(clamp(opts.reverb, 0, 1.2), now);
+              g.connect(rv);
+              rv.connect(reverbNode);
+            }
+            o.start(now);
+            o.stop(now + dur + 0.04);
+            return o;
+          },
+          noiseBurst(opts = {}) {
+            const buf = opts.pink ? pinkNoiseBuffer : noiseBuffer;
+            if (!buf) return null;
+            const now = ac.currentTime + (opts.delay || 0.002);
+            const dur = Math.max(0.03, opts.duration || 0.3);
+            const src = trackNode(ac.createBufferSource());
+            src.buffer = buf;
+            src.loop = dur > 1.8;
+            const f = ac.createBiquadFilter();
+            f.type = opts.filterType || 'bandpass';
+            f.frequency.setValueAtTime(opts.freq || 1000, now);
+            if (opts.freqEnd) f.frequency.exponentialRampToValueAtTime(Math.max(40, opts.freqEnd), now + dur);
+            f.Q.setValueAtTime(opts.Q || 1.2, now);
+            const g = ac.createGain();
+            const atk = Math.min(dur * 0.4, opts.attack || 0.01);
+            const peak = clamp(opts.gain !== undefined ? opts.gain : 0.4, 0.001, 1.5);
+            g.gain.setValueAtTime(0.0001, now);
+            g.gain.linearRampToValueAtTime(peak, now + atk);
+            g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
+            src.connect(f); f.connect(g); g.connect(dest);
+            if (opts.reverb && reverbNode) {
+              const rv = ac.createGain();
+              rv.gain.setValueAtTime(clamp(opts.reverb, 0, 1.2), now);
+              g.connect(rv);
+              rv.connect(reverbNode);
+            }
+            src.start(now);
+            src.stop(now + dur + 0.05);
+            return src;
+          }
+        };
+      }
+
+      // =======================================================================
+      // 5A. SEQUENCIADOR MUSICAL PROCEDURAL (11 INSTRUMENTOS + REVERB)
+      // =======================================================================
+      function playMusicNote(ac, dest, n) {
+        const now = ac.currentTime + 0.004;
+        const dur = Math.max(0.06, n.duration || 0.4);
+        const freq = n.freq;
+        const vol = clamp(n.volume || 0.25, 0.01, 1.2);
+        const inst = n.instrument || 'piano';
+        const revAmt = n.reverb !== undefined ? n.reverb : 0.35;
+
+        const outGain = ac.createGain();
+        outGain.gain.setValueAtTime(1.0, now);
+        outGain.connect(dest);
+        if (revAmt > 0.01 && reverbNode) {
+          const rSend = ac.createGain();
+          rSend.gain.setValueAtTime(revAmt, now);
+          outGain.connect(rSend);
+          rSend.connect(reverbNode);
+        }
+
+        if (inst === 'kick') {
+          const o = trackNode(ac.createOscillator());
+          const g = ac.createGain();
+          o.type = 'sine';
+          o.frequency.setValueAtTime(150, now);
+          o.frequency.exponentialRampToValueAtTime(42, now + 0.12);
+          g.gain.setValueAtTime(0.0001, now);
+          g.gain.linearRampToValueAtTime(vol * 1.1, now + 0.004);
+          g.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
+          o.connect(g); g.connect(outGain);
+          o.start(now); o.stop(now + 0.3);
+          return;
+        }
+
+        if (inst === 'snare') {
+          const a = createAudioToolkit(ac, outGain);
+          a.osc({ type: 'triangle', freq: 190, freqEnd: 110, duration: 0.12, gain: vol * 0.5 });
+          a.noiseBurst({ filterType: 'highpass', freq: 1400, duration: 0.16, gain: vol * 0.55 });
+          return;
+        }
+
+        if (inst === 'hihat') {
+          const a = createAudioToolkit(ac, outGain);
+          a.noiseBurst({ filterType: 'highpass', freq: 7200, duration: 0.06, gain: vol * 0.32 });
+          return;
+        }
+
+        if (inst === 'musicBox' || inst === 'bell') {
+          const ratios = inst === 'musicBox' ? [1, 2.756, 5.404] : [1, 2, 3.01];
+          const amps = [0.65, 0.24, 0.11];
+          const tail = Math.max(dur, inst === 'musicBox' ? 1.4 : 1.1);
+          ratios.forEach((r, idx) => {
+            const o = trackNode(ac.createOscillator());
+            const g = ac.createGain();
+            o.type = 'sine';
+            o.frequency.setValueAtTime(freq * r, now);
+            g.gain.setValueAtTime(0.0001, now);
+            g.gain.linearRampToValueAtTime(vol * amps[idx], now + 0.004);
+            g.gain.exponentialRampToValueAtTime(0.0001, now + tail / (idx * 0.7 + 1));
+            o.connect(g); g.connect(outGain);
+            o.start(now); o.stop(now + tail + 0.04);
+          });
+          return;
+        }
+
+        if (inst === 'pad' || inst === 'strings') {
+          const detunes = inst === 'strings' ? [-9, 0, 9] : [-6, 6];
+          const lp = ac.createBiquadFilter();
+          lp.type = 'lowpass';
+          lp.frequency.setValueAtTime(inst === 'strings' ? 2200 : 950, now);
+          const env = ac.createGain();
+          const atk = Math.min(dur * 0.35, inst === 'pad' ? 0.55 : 0.22);
+          env.gain.setValueAtTime(0.0001, now);
+          env.gain.linearRampToValueAtTime(vol * 0.42, now + atk);
+          env.gain.setValueAtTime(vol * 0.38, Math.max(now + atk, now + dur - 0.3));
+          env.gain.exponentialRampToValueAtTime(0.0001, now + dur + 0.45);
+          lp.connect(env); env.connect(outGain);
+          detunes.forEach((dt) => {
+            const o = trackNode(ac.createOscillator());
+            o.type = 'sawtooth';
+            o.frequency.setValueAtTime(freq, now);
+            o.detune.setValueAtTime(dt, now);
+            o.connect(lp);
+            o.start(now); o.stop(now + dur + 0.5);
+          });
+          return;
+        }
+
+        if (inst === 'bass') {
+          const o1 = trackNode(ac.createOscillator());
+          const o2 = trackNode(ac.createOscillator());
+          const lp = ac.createBiquadFilter();
+          const g = ac.createGain();
+          o1.type = 'sine'; o1.frequency.setValueAtTime(freq, now);
+          o2.type = 'triangle'; o2.frequency.setValueAtTime(freq * 2, now);
+          lp.type = 'lowpass'; lp.frequency.setValueAtTime(420, now);
+          g.gain.setValueAtTime(0.0001, now);
+          g.gain.linearRampToValueAtTime(vol * 0.72, now + 0.015);
+          g.gain.exponentialRampToValueAtTime(0.0001, now + dur + 0.12);
+          o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(outGain);
+          o1.start(now); o2.start(now);
+          o1.stop(now + dur + 0.16); o2.stop(now + dur + 0.16);
+          return;
+        }
+
+        // Default: piano / synth / organ
+        const o1 = trackNode(ac.createOscillator());
+        const o2 = trackNode(ac.createOscillator());
+        const lp = ac.createBiquadFilter();
+        const g = ac.createGain();
+        o1.type = inst === 'synth' ? 'sawtooth' : 'triangle';
+        o2.type = 'sine';
+        o1.frequency.setValueAtTime(freq, now);
+        o2.frequency.setValueAtTime(freq * 2, now);
+        lp.type = 'lowpass';
+        lp.frequency.setValueAtTime(inst === 'organ' ? 1800 : 3400, now);
+        if (inst === 'piano') lp.frequency.exponentialRampToValueAtTime(750, now + dur + 0.2);
+        const rel = inst === 'organ' ? 0.08 : 0.32;
+        g.gain.setValueAtTime(0.0001, now);
+        g.gain.linearRampToValueAtTime(vol * 0.55, now + 0.008);
+        g.gain.exponentialRampToValueAtTime(0.0001, now + dur + rel);
+        o1.connect(lp); o2.connect(lp); lp.connect(g); g.connect(outGain);
+        o1.start(now); o2.start(now);
+        o1.stop(now + dur + rel + 0.04); o2.stop(now + dur + rel + 0.04);
+      }
+
+      // =======================================================================
+      // 5B. AMBIÊNCIAS CONTÍNUAS PROCEDURAIS (CHUVA, TEMPESTADE, DRONE, SIRENE...)
+      // =======================================================================
+      function spawnAmbience(ac, dest, amb, remDur) {
+        const now = ac.currentTime + 0.005;
+        const vol = clamp(amb.volume !== undefined ? amb.volume : 0.35, 0.02, 1.2);
+        const fadeIn = Math.min(0.45, remDur * 0.25);
+        const fadeOut = Math.min(0.5, remDur * 0.25);
+
+        const env = ac.createGain();
+        env.gain.setValueAtTime(0.0001, now);
+        env.gain.linearRampToValueAtTime(vol, now + fadeIn);
+        env.gain.setValueAtTime(vol, Math.max(now + fadeIn, now + remDur - fadeOut));
+        env.gain.linearRampToValueAtTime(0.0001, now + remDur);
+        env.connect(dest);
+
+        const localNodes = [];
+        const reg = (n) => { trackNode(n); localNodes.push(n); return n; };
+
+        if (amb.customFn) {
+          try {
+            const toolkit = createAudioToolkit(ac, env);
+            amb.customFn(ac, env, remDur, vol, toolkit);
+          } catch (e) {}
+        } else {
+          const type = amb.type || 'rain';
+          const makeLoopNoise = (pink, filtType, freq, Q, gVal) => {
+            const buf = pink ? pinkNoiseBuffer : noiseBuffer;
+            if (!buf) return null;
+            const src = reg(ac.createBufferSource());
+            src.buffer = buf; src.loop = true;
+            const f = ac.createBiquadFilter();
+            f.type = filtType; f.frequency.setValueAtTime(freq, now); f.Q.setValueAtTime(Q, now);
+            const g = ac.createGain(); g.gain.setValueAtTime(gVal, now);
+            src.connect(f); f.connect(g); g.connect(env);
+            src.start(now); src.stop(now + remDur + 0.08);
+            return { src, f, g };
+          };
+
+          if (type === 'rain' || type === 'storm') {
+            makeLoopNoise(true, 'bandpass', 1350, 0.7, 0.72);
+            makeLoopNoise(false, 'highpass', 4200, 0.8, 0.16);
+            if (type === 'storm') {
+              const rumb = makeLoopNoise(true, 'lowpass', 150, 1.6, 0.85);
+              if (rumb) {
+                const lfo = reg(ac.createOscillator());
+                const lg = ac.createGain();
+                lfo.frequency.setValueAtTime(0.22, now);
+                lg.gain.setValueAtTime(65, now);
+                lfo.connect(lg); lg.connect(rumb.f.frequency);
+                lfo.start(now); lfo.stop(now + remDur + 0.08);
+              }
+            }
+          } else if (type === 'wind' || type === 'forestNight') {
+            const w = makeLoopNoise(true, 'bandpass', 380, 3.8, type === 'wind' ? 0.8 : 0.35);
+            if (w) {
+              const lfo = reg(ac.createOscillator());
+              const lg = ac.createGain();
+              lfo.frequency.setValueAtTime(0.18, now);
+              lg.gain.setValueAtTime(190, now);
+              lfo.connect(lg); lg.connect(w.f.frequency);
+              lfo.start(now); lfo.stop(now + remDur + 0.08);
+            }
+            if (type === 'forestNight') {
+              const cr = reg(ac.createOscillator());
+              const am = reg(ac.createOscillator());
+              const amG = ac.createGain();
+              const cg = ac.createGain();
+              cr.type = 'sine'; cr.frequency.setValueAtTime(4250, now);
+              am.frequency.setValueAtTime(14, now);
+              amG.gain.setValueAtTime(0.05, now);
+              cg.gain.setValueAtTime(0.05, now);
+              am.connect(amG); amG.connect(cg.gain);
+              cr.connect(cg); cg.connect(env);
+              cr.start(now); am.start(now);
+              cr.stop(now + remDur + 0.08); am.stop(now + remDur + 0.08);
+            }
+          } else if (type === 'horrorDrone' || type === 'tensionPulse') {
+            const freqs = type === 'horrorDrone' ? [55, 55.7, 77.78] : [49, 98];
+            const lp = ac.createBiquadFilter();
+            lp.type = 'lowpass'; lp.frequency.setValueAtTime(240, now);
+            const g = ac.createGain(); g.gain.setValueAtTime(0.45, now);
+            if (type === 'tensionPulse') {
+              const lfo = reg(ac.createOscillator());
+              const lg = ac.createGain();
+              lfo.frequency.setValueAtTime(2.0, now);
+              lg.gain.setValueAtTime(0.32, now);
+              lfo.connect(lg); lg.connect(g.gain);
+              lfo.start(now); lfo.stop(now + remDur + 0.08);
+            }
+            lp.connect(g); g.connect(env);
+            if (reverbNode) g.connect(reverbNode);
+            freqs.forEach((f) => {
+              const o = reg(ac.createOscillator());
+              o.type = 'sawtooth'; o.frequency.setValueAtTime(f, now);
+              o.connect(lp);
+              o.start(now); o.stop(now + remDur + 0.08);
+            });
+          } else if (type === 'policeSiren') {
+            const o = reg(ac.createOscillator());
+            const lfo = reg(ac.createOscillator());
+            const lg = ac.createGain();
+            const bp = ac.createBiquadFilter();
+            const g = ac.createGain();
+            o.type = 'sawtooth'; o.frequency.setValueAtTime(860, now);
+            lfo.type = 'sine'; lfo.frequency.setValueAtTime(0.75, now);
+            lg.gain.setValueAtTime(290, now);
+            lfo.connect(lg); lg.connect(o.frequency);
+            bp.type = 'bandpass'; bp.frequency.setValueAtTime(950, now); bp.Q.setValueAtTime(2.0, now);
+            g.gain.setValueAtTime(0.28, now);
+            o.connect(bp); bp.connect(g); g.connect(env);
+            if (reverbNode) g.connect(reverbNode);
+            o.start(now); lfo.start(now);
+            o.stop(now + remDur + 0.08); lfo.stop(now + remDur + 0.08);
+          } else if (type === 'heartbeat') {
+            const beatInterval = 0.88;
+            for (let t0 = 0; t0 < remDur - 0.15; t0 += beatInterval) {
+              [0, 0.2].forEach((off, idx) => {
+                const o = reg(ac.createOscillator());
+                const g = ac.createGain();
+                o.type = 'sine';
+                o.frequency.setValueAtTime(idx === 0 ? 78 : 64, now + t0 + off);
+                o.frequency.exponentialRampToValueAtTime(34, now + t0 + off + 0.14);
+                g.gain.setValueAtTime(0.0001, now + t0 + off);
+                g.gain.linearRampToValueAtTime(idx === 0 ? 0.9 : 0.6, now + t0 + off + 0.015);
+                g.gain.exponentialRampToValueAtTime(0.0001, now + t0 + off + 0.18);
+                o.connect(g); g.connect(env);
+                o.start(now + t0 + off); o.stop(now + t0 + off + 0.2);
+              });
+            }
+          } else {
+            // crowd / fire / fallback genérico
+            makeLoopNoise(true, 'bandpass', type === 'fire' ? 280 : 620, 1.1, 0.6);
+          }
+        }
+
+        return () => {
+          try {
+            env.gain.cancelScheduledValues(ac.currentTime);
+            env.gain.setTargetAtTime(0.0001, ac.currentTime, 0.04);
+          } catch (e) {}
+          setTimeout(() => {
+            localNodes.forEach((n) => {
+              try { n.stop(); } catch (e) {}
+              try { n.disconnect(); } catch (e) {}
+            });
+          }, 120);
+        };
+      }
+
+      // =======================================================================
+      // 5C. 18 EFEITOS PRESETADOS + MOTOR LIVRE (customCode)
+      // =======================================================================
       const SFX_LIB = {
         woodKnock(ac, dest, vol = 1.0, variation = 0) {
-          const now = ac.currentTime + 0.002;
-          const pVars = [1.0, 1.045, 0.965];
-          const pm = pVars[variation % pVars.length];
-          const v = clamp(vol, 0.05, 1.5);
-
-          // Corpo oco grave
-          const body = ac.createOscillator();
-          const bFilt = ac.createBiquadFilter();
-          const bGain = ac.createGain();
-          body.type = 'triangle';
-          body.frequency.setValueAtTime(255 * pm, now);
-          body.frequency.exponentialRampToValueAtTime(102 * pm, now + 0.048);
-          body.frequency.exponentialRampToValueAtTime(74 * pm, now + 0.13);
-          bFilt.type = 'lowpass';
-          bFilt.frequency.setValueAtTime(520 * pm, now);
-          bFilt.Q.setValueAtTime(2.6, now);
-          bGain.gain.setValueAtTime(0.0001, now);
-          bGain.gain.linearRampToValueAtTime(0.95 * v, now + 0.0025);
-          bGain.gain.exponentialRampToValueAtTime(0.18 * v, now + 0.045);
-          bGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.145);
-          body.connect(bFilt); bFilt.connect(bGain); bGain.connect(dest);
-          body.start(now); body.stop(now + 0.16);
-
-          // Ressonância amadeirada média
-          const wood = ac.createOscillator();
-          const wFilt = ac.createBiquadFilter();
-          const wGain = ac.createGain();
-          wood.type = 'sine';
-          wood.frequency.setValueAtTime(412 * pm, now);
-          wood.frequency.exponentialRampToValueAtTime(192 * pm, now + 0.036);
-          wFilt.type = 'bandpass';
-          wFilt.frequency.setValueAtTime(315 * pm, now);
-          wFilt.Q.setValueAtTime(3.2, now);
-          wGain.gain.setValueAtTime(0.0001, now);
-          wGain.gain.linearRampToValueAtTime(0.55 * v, now + 0.002);
-          wGain.gain.exponentialRampToValueAtTime(0.0001, now + 0.085);
-          wood.connect(wFilt); wFilt.connect(wGain); wGain.connect(dest);
-          wood.start(now); wood.stop(now + 0.095);
-
-          // Estalo seco
-          if (noiseBuffer) {
-            const ns = ac.createBufferSource();
-            ns.buffer = noiseBuffer;
-            const nb = ac.createBiquadFilter();
-            nb.type = 'bandpass'; nb.frequency.setValueAtTime(1180 * pm, now); nb.Q.setValueAtTime(1.6, now);
-            const nh = ac.createBiquadFilter();
-            nh.type = 'highpass'; nh.frequency.setValueAtTime(380, now);
-            const ng = ac.createGain();
-            ng.gain.setValueAtTime(0.0001, now);
-            ng.gain.linearRampToValueAtTime(0.68 * v, now + 0.0015);
-            ng.gain.exponentialRampToValueAtTime(0.0001, now + 0.032);
-            ns.connect(nb); nb.connect(nh); nh.connect(ng); ng.connect(dest);
-            ns.start(now); ns.stop(now + 0.042);
-          }
+          const a = createAudioToolkit(ac, dest);
+          const pm = [1.0, 1.045, 0.965][variation % 3];
+          a.osc({ type: 'triangle', freq: 255 * pm, freqEnd: 78 * pm, duration: 0.14, gain: 0.9 * vol, filterFreq: 520 * pm, Q: 2.5 });
+          a.osc({ type: 'sine', freq: 412 * pm, freqEnd: 192 * pm, duration: 0.085, gain: 0.5 * vol, filterType: 'bandpass', filterFreq: 315 * pm, Q: 3 });
+          a.noiseBurst({ freq: 1180 * pm, Q: 1.6, duration: 0.035, gain: 0.62 * vol });
         },
-
         footstep(ac, dest, vol = 1.0, variation = 0) {
-          if (!noiseBuffer) return;
-          const now = ac.currentTime + 0.002;
-          const v = clamp(vol, 0.05, 1.5);
-          const src = ac.createBufferSource();
-          src.buffer = noiseBuffer;
-          const filt = ac.createBiquadFilter();
-          filt.type = 'bandpass';
-          filt.frequency.setValueAtTime(variation % 2 === 0 ? 285 : 335, now);
-          filt.Q.setValueAtTime(1.2, now);
-          const gain = ac.createGain();
-          gain.gain.setValueAtTime(0.0001, now);
-          gain.gain.linearRampToValueAtTime(0.14 * v, now + 0.008);
-          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.068);
-          src.connect(filt); filt.connect(gain); gain.connect(dest);
-          src.start(now); src.stop(now + 0.08);
+          const a = createAudioToolkit(ac, dest);
+          a.noiseBurst({ pink: true, freq: variation % 2 === 0 ? 290 : 340, Q: 1.2, duration: 0.075, gain: 0.3 * vol });
         },
-
         pop(ac, dest, vol = 1.0) {
-          const now = ac.currentTime + 0.002;
-          const v = clamp(vol, 0.05, 1.5);
-          const osc = ac.createOscillator();
-          const gain = ac.createGain();
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(240, now);
-          osc.frequency.exponentialRampToValueAtTime(760, now + 0.055);
-          gain.gain.setValueAtTime(0.0001, now);
-          gain.gain.linearRampToValueAtTime(0.42 * v, now + 0.006);
-          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.085);
-          osc.connect(gain); gain.connect(dest);
-          osc.start(now); osc.stop(now + 0.095);
+          createAudioToolkit(ac, dest).osc({ type: 'sine', freq: 240, freqEnd: 760, duration: 0.085, gain: 0.42 * vol });
         },
-
         whoosh(ac, dest, vol = 1.0) {
-          if (!noiseBuffer) return;
-          const now = ac.currentTime + 0.002;
-          const v = clamp(vol, 0.05, 1.5);
-          const src = ac.createBufferSource();
-          src.buffer = noiseBuffer;
-          const filt = ac.createBiquadFilter();
-          filt.type = 'bandpass';
-          filt.Q.setValueAtTime(2.0, now);
-          filt.frequency.setValueAtTime(220, now);
-          filt.frequency.exponentialRampToValueAtTime(1600, now + 0.14);
-          filt.frequency.exponentialRampToValueAtTime(280, now + 0.34);
-          const gain = ac.createGain();
-          gain.gain.setValueAtTime(0.0001, now);
-          gain.gain.linearRampToValueAtTime(0.45 * v, now + 0.12);
-          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.36);
-          src.connect(filt); filt.connect(gain); gain.connect(dest);
-          src.start(now); src.stop(now + 0.38);
+          createAudioToolkit(ac, dest).noiseBurst({ pink: true, freq: 240, freqEnd: 1650, Q: 1.8, attack: 0.12, duration: 0.36, gain: 0.55 * vol, reverb: 0.25 });
         },
-
         chime(ac, dest, vol = 1.0) {
-          const now = ac.currentTime + 0.002;
-          const v = clamp(vol, 0.05, 1.5);
-          const notes = [587.33, 880, 1174.66];
-          notes.forEach((freq, idx) => {
-            const osc = ac.createOscillator();
-            const gain = ac.createGain();
-            osc.type = idx === 0 ? 'triangle' : 'sine';
-            osc.frequency.setValueAtTime(freq, now + idx * 0.055);
-            gain.gain.setValueAtTime(0.0001, now + idx * 0.055);
-            gain.gain.linearRampToValueAtTime(0.22 * v / (idx * 0.4 + 1), now + idx * 0.055 + 0.015);
-            gain.gain.exponentialRampToValueAtTime(0.0001, now + idx * 0.055 + 0.65);
-            osc.connect(gain); gain.connect(dest);
-            osc.start(now + idx * 0.055); osc.stop(now + idx * 0.055 + 0.68);
-          });
+          const a = createAudioToolkit(ac, dest);
+          [587.33, 880, 1174.66].forEach((f, i) => a.osc({ type: i ? 'sine' : 'triangle', freq: f, delay: i * 0.055, duration: 0.65, gain: (0.24 * vol) / (i * 0.4 + 1), reverb: 0.45 }));
         },
-
         whistle(ac, dest, vol = 1.0) {
           const now = ac.currentTime + 0.002;
           const v = clamp(vol, 0.05, 1.5);
-          const dur = 0.42;
-
-          // Tom principal do apito de juiz com modulação AM/FM simulando a bolinha
-          const osc = ac.createOscillator();
-          const lfo = ac.createOscillator();
-          const lfoFreqGain = ac.createGain();
-          const amLfo = ac.createOscillator();
-          const amGain = ac.createGain();
-          const master = ac.createGain();
-
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(2880, now);
-          osc.frequency.linearRampToValueAtTime(3040, now + 0.08);
-          osc.frequency.setValueAtTime(2980, now + dur);
-
-          lfo.frequency.setValueAtTime(38, now);
-          lfoFreqGain.gain.setValueAtTime(95, now);
-          lfo.connect(lfoFreqGain);
-          lfoFreqGain.connect(osc.frequency);
-
-          amLfo.frequency.setValueAtTime(38, now);
-          amGain.gain.setValueAtTime(0.14 * v, now);
-
-          master.gain.setValueAtTime(0.0001, now);
-          master.gain.linearRampToValueAtTime(0.36 * v, now + 0.02);
-          master.gain.setValueAtTime(0.34 * v, now + dur - 0.06);
-          master.gain.exponentialRampToValueAtTime(0.0001, now + dur);
-
-          amLfo.connect(amGain);
-          amGain.connect(master.gain);
-
-          osc.connect(master);
-          master.connect(dest);
-
-          osc.start(now); lfo.start(now); amLfo.start(now);
-          osc.stop(now + dur + 0.02); lfo.stop(now + dur + 0.02); amLfo.stop(now + dur + 0.02);
-
-          // Sopro suave de ar
-          if (noiseBuffer) {
-            const ns = ac.createBufferSource(); ns.buffer = noiseBuffer;
-            const bp = ac.createBiquadFilter(); bp.type = 'bandpass'; bp.frequency.setValueAtTime(3200, now); bp.Q.setValueAtTime(4, now);
-            const ng = ac.createGain();
-            ng.gain.setValueAtTime(0.0001, now);
-            ng.gain.linearRampToValueAtTime(0.12 * v, now + 0.02);
-            ng.gain.exponentialRampToValueAtTime(0.0001, now + dur);
-            ns.connect(bp); bp.connect(ng); ng.connect(dest);
-            ns.start(now); ns.stop(now + dur + 0.02);
-          }
+          const osc = trackNode(ac.createOscillator());
+          const lfo = trackNode(ac.createOscillator());
+          const lg = ac.createGain();
+          const g = ac.createGain();
+          osc.type = 'sine'; osc.frequency.setValueAtTime(2920, now);
+          lfo.frequency.setValueAtTime(38, now); lg.gain.setValueAtTime(95, now);
+          lfo.connect(lg); lg.connect(osc.frequency);
+          g.gain.setValueAtTime(0.0001, now); g.gain.linearRampToValueAtTime(0.34 * v, now + 0.02); g.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
+          osc.connect(g); g.connect(dest);
+          osc.start(now); lfo.start(now); osc.stop(now + 0.44); lfo.stop(now + 0.44);
         },
-
         bark(ac, dest, vol = 1.0, variation = 0) {
-          const now = ac.currentTime + 0.002;
-          const v = clamp(vol, 0.05, 1.5);
-          const pm = variation % 2 === 0 ? 1.0 : 1.12;
-
-          const osc = ac.createOscillator();
-          const filt = ac.createBiquadFilter();
-          const gain = ac.createGain();
-
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(290 * pm, now);
-          osc.frequency.exponentialRampToValueAtTime(490 * pm, now + 0.035);
-          osc.frequency.exponentialRampToValueAtTime(165 * pm, now + 0.14);
-
-          filt.type = 'bandpass';
-          filt.frequency.setValueAtTime(740 * pm, now);
-          filt.Q.setValueAtTime(2.8, now);
-
-          gain.gain.setValueAtTime(0.0001, now);
-          gain.gain.linearRampToValueAtTime(0.65 * v, now + 0.015);
-          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.16);
-
-          osc.connect(filt); filt.connect(gain); gain.connect(dest);
-          osc.start(now); osc.stop(now + 0.18);
+          const a = createAudioToolkit(ac, dest);
+          const pm = variation % 2 === 0 ? 1 : 1.12;
+          a.osc({ type: 'sawtooth', freq: 340 * pm, freqEnd: 165 * pm, duration: 0.16, gain: 0.62 * vol, filterType: 'bandpass', filterFreq: 760 * pm, Q: 2.6, reverb: 0.25 });
         },
-
         meow(ac, dest, vol = 1.0) {
-          const now = ac.currentTime + 0.002;
-          const v = clamp(vol, 0.05, 1.5);
-          const osc = ac.createOscillator();
-          const filt = ac.createBiquadFilter();
-          const gain = ac.createGain();
-
-          osc.type = 'triangle';
-          osc.frequency.setValueAtTime(520, now);
-          osc.frequency.exponentialRampToValueAtTime(840, now + 0.12);
-          osc.frequency.exponentialRampToValueAtTime(440, now + 0.42);
-
-          filt.type = 'bandpass';
-          filt.frequency.setValueAtTime(1250, now);
-          filt.Q.setValueAtTime(2.5, now);
-
-          gain.gain.setValueAtTime(0.0001, now);
-          gain.gain.linearRampToValueAtTime(0.42 * v, now + 0.06);
-          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.44);
-
-          osc.connect(filt); filt.connect(gain); gain.connect(dest);
-          osc.start(now); osc.stop(now + 0.46);
+          createAudioToolkit(ac, dest).osc({ type: 'triangle', freq: 780, freqEnd: 430, attack: 0.08, duration: 0.44, gain: 0.42 * vol, filterType: 'bandpass', filterFreq: 1250, Q: 2.4 });
         },
-
         boing(ac, dest, vol = 1.0) {
-          const now = ac.currentTime + 0.002;
-          const v = clamp(vol, 0.05, 1.5);
-          const osc = ac.createOscillator();
-          const lfo = ac.createOscillator();
-          const lfoG = ac.createGain();
-          const gain = ac.createGain();
-
-          osc.type = 'sine';
-          osc.frequency.setValueAtTime(150, now);
-          osc.frequency.exponentialRampToValueAtTime(520, now + 0.24);
-          osc.frequency.exponentialRampToValueAtTime(340, now + 0.42);
-
-          lfo.frequency.setValueAtTime(18, now);
-          lfoG.gain.setValueAtTime(28, now);
-          lfo.connect(lfoG); lfoG.connect(osc.frequency);
-
-          gain.gain.setValueAtTime(0.0001, now);
-          gain.gain.linearRampToValueAtTime(0.48 * v, now + 0.015);
-          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.44);
-
-          osc.connect(gain); gain.connect(dest);
-          osc.start(now); lfo.start(now);
-          osc.stop(now + 0.46); lfo.stop(now + 0.46);
+          createAudioToolkit(ac, dest).osc({ type: 'sine', freq: 150, freqEnd: 480, duration: 0.36, gain: 0.45 * vol });
         },
-
         impact(ac, dest, vol = 1.0) {
-          const now = ac.currentTime + 0.002;
-          const v = clamp(vol, 0.05, 1.5);
-
-          const sub = ac.createOscillator();
-          const subG = ac.createGain();
-          sub.type = 'sine';
-          sub.frequency.setValueAtTime(140, now);
-          sub.frequency.exponentialRampToValueAtTime(38, now + 0.24);
-          subG.gain.setValueAtTime(0.0001, now);
-          subG.gain.linearRampToValueAtTime(0.95 * v, now + 0.004);
-          subG.gain.exponentialRampToValueAtTime(0.0001, now + 0.28);
-          sub.connect(subG); subG.connect(dest);
-          sub.start(now); sub.stop(now + 0.3);
-
-          if (noiseBuffer) {
-            const ns = ac.createBufferSource(); ns.buffer = noiseBuffer;
-            const lp = ac.createBiquadFilter(); lp.type = 'lowpass'; lp.frequency.setValueAtTime(900, now);
-            const ng = ac.createGain();
-            ng.gain.setValueAtTime(0.0001, now);
-            ng.gain.linearRampToValueAtTime(0.55 * v, now + 0.003);
-            ng.gain.exponentialRampToValueAtTime(0.0001, now + 0.14);
-            ns.connect(lp); lp.connect(ng); ng.connect(dest);
-            ns.start(now); ns.stop(now + 0.16);
-          }
+          const a = createAudioToolkit(ac, dest);
+          a.osc({ type: 'sine', freq: 145, freqEnd: 34, duration: 0.34, gain: 0.95 * vol, reverb: 0.35 });
+          a.noiseBurst({ pink: true, filterType: 'lowpass', freq: 820, duration: 0.2, gain: 0.6 * vol, reverb: 0.3 });
         },
-
         crash(ac, dest, vol = 1.0) {
-          const now = ac.currentTime + 0.002;
-          const v = clamp(vol, 0.05, 1.5);
-
-          if (noiseBuffer) {
-            const ns = ac.createBufferSource(); ns.buffer = noiseBuffer;
-            const hp = ac.createBiquadFilter(); hp.type = 'highpass'; hp.frequency.setValueAtTime(1600, now);
-            const ng = ac.createGain();
-            ng.gain.setValueAtTime(0.0001, now);
-            ng.gain.linearRampToValueAtTime(0.7 * v, now + 0.005);
-            ng.gain.exponentialRampToValueAtTime(0.0001, now + 0.42);
-            ns.connect(hp); hp.connect(ng); ng.connect(dest);
-            ns.start(now); ns.stop(now + 0.45);
-          }
-
-          // Estilhaços agudos metálicos/vidro
-          const freqs = [2450, 3180, 4120, 5290, 6100];
-          freqs.forEach((f, i) => {
-            const osc = ac.createOscillator();
-            const g = ac.createGain();
-            const start = now + i * 0.022;
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(f, start);
-            g.gain.setValueAtTime(0.0001, start);
-            g.gain.linearRampToValueAtTime(0.16 * v, start + 0.004);
-            g.gain.exponentialRampToValueAtTime(0.0001, start + 0.18 + i * 0.03);
-            osc.connect(g); g.connect(dest);
-            osc.start(start); osc.stop(start + 0.35);
-          });
+          const a = createAudioToolkit(ac, dest);
+          a.noiseBurst({ filterType: 'highpass', freq: 1500, duration: 0.45, gain: 0.68 * vol, reverb: 0.4 });
+          [2450, 3180, 4120, 5290].forEach((f, i) => a.osc({ freq: f, delay: i * 0.02, duration: 0.24, gain: 0.15 * vol, reverb: 0.35 }));
         },
-
         applause(ac, dest, vol = 1.0) {
-          if (!noiseBuffer) return;
-          const now = ac.currentTime + 0.002;
-          const v = clamp(vol, 0.05, 1.5);
-
-          // 12 palmas sobrepostas + base de torcida filtrada
+          const a = createAudioToolkit(ac, dest);
           for (let i = 0; i < 12; i++) {
-            const t0 = now + i * 0.065 + (i % 3) * 0.014;
-            const src = ac.createBufferSource(); src.buffer = noiseBuffer;
-            const bp = ac.createBiquadFilter();
-            bp.type = 'bandpass';
-            bp.frequency.setValueAtTime(1100 + (i % 5) * 260, t0);
-            bp.Q.setValueAtTime(2.2, t0);
-            const g = ac.createGain();
-            g.gain.setValueAtTime(0.0001, t0);
-            g.gain.linearRampToValueAtTime(0.24 * v, t0 + 0.008);
-            g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.09);
-            src.connect(bp); bp.connect(g); g.connect(dest);
-            src.start(t0); src.stop(t0 + 0.11);
+            a.noiseBurst({ delay: i * 0.06 + (i % 3) * 0.014, freq: 1100 + (i % 5) * 260, Q: 2.1, duration: 0.09, gain: 0.24 * vol, reverb: 0.25 });
           }
         },
-
         sadTrombone(ac, dest, vol = 1.0) {
-          const now = ac.currentTime + 0.002;
-          const v = clamp(vol, 0.05, 1.5);
-          const steps = [
-            { f: 311.13, t: 0.00, d: 0.24 },
-            { f: 293.66, t: 0.26, d: 0.24 },
-            { f: 277.18, t: 0.52, d: 0.24 },
-            { f: 261.63, t: 0.78, d: 0.56, slide: 233.08 }
-          ];
-          steps.forEach((s) => {
-            const osc = ac.createOscillator();
-            const lp = ac.createBiquadFilter();
-            const g = ac.createGain();
-            osc.type = 'sawtooth';
-            osc.frequency.setValueAtTime(s.f, now + s.t);
-            if (s.slide) {
-              osc.frequency.linearRampToValueAtTime(s.slide, now + s.t + s.d);
-            }
-            lp.type = 'lowpass';
-            lp.frequency.setValueAtTime(920, now + s.t);
-            g.gain.setValueAtTime(0.0001, now + s.t);
-            g.gain.linearRampToValueAtTime(0.28 * v, now + s.t + 0.025);
-            g.gain.exponentialRampToValueAtTime(0.0001, now + s.t + s.d);
-            osc.connect(lp); lp.connect(g); g.connect(dest);
-            osc.start(now + s.t); osc.stop(now + s.t + s.d + 0.03);
-          });
+          const a = createAudioToolkit(ac, dest);
+          [{ f: 311.13, d: 0, dur: 0.24 }, { f: 293.66, d: 0.26, dur: 0.24 }, { f: 277.18, d: 0.52, dur: 0.24 }, { f: 261.63, fe: 233.08, d: 0.78, dur: 0.56 }]
+            .forEach((s) => a.osc({ type: 'sawtooth', freq: s.f, freqEnd: s.fe, delay: s.d, duration: s.dur, gain: 0.28 * vol, filterFreq: 900, reverb: 0.3 }));
         },
-
         laser(ac, dest, vol = 1.0) {
-          const now = ac.currentTime + 0.002;
-          const v = clamp(vol, 0.05, 1.5);
-          const osc = ac.createOscillator();
-          const gain = ac.createGain();
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(1450, now);
-          osc.frequency.exponentialRampToValueAtTime(160, now + 0.19);
-          gain.gain.setValueAtTime(0.0001, now);
-          gain.gain.linearRampToValueAtTime(0.3 * v, now + 0.006);
-          gain.gain.exponentialRampToValueAtTime(0.0001, now + 0.21);
-          osc.connect(gain); gain.connect(dest);
-          osc.start(now); osc.stop(now + 0.22);
+          createAudioToolkit(ac, dest).osc({ type: 'sawtooth', freq: 1450, freqEnd: 160, duration: 0.2, gain: 0.3 * vol });
         },
-
         splash(ac, dest, vol = 1.0) {
-          if (!noiseBuffer) return;
-          const now = ac.currentTime + 0.002;
-          const v = clamp(vol, 0.05, 1.5);
-          const src = ac.createBufferSource(); src.buffer = noiseBuffer;
-          const bp = ac.createBiquadFilter();
-          bp.type = 'bandpass';
-          bp.frequency.setValueAtTime(420, now);
-          bp.frequency.exponentialRampToValueAtTime(2200, now + 0.16);
-          bp.frequency.exponentialRampToValueAtTime(700, now + 0.36);
-          bp.Q.setValueAtTime(1.4, now);
-          const g = ac.createGain();
-          g.gain.setValueAtTime(0.0001, now);
-          g.gain.linearRampToValueAtTime(0.52 * v, now + 0.02);
-          g.gain.exponentialRampToValueAtTime(0.0001, now + 0.38);
-          src.connect(bp); bp.connect(g); g.connect(dest);
-          src.start(now); src.stop(now + 0.4);
-
-          // Gotinhas
-          [0.08, 0.17].forEach((off, idx) => {
-            const o = ac.createOscillator();
-            const og = ac.createGain();
-            o.type = 'sine';
-            o.frequency.setValueAtTime(600 + idx * 240, now + off);
-            o.frequency.exponentialRampToValueAtTime(1150 + idx * 280, now + off + 0.05);
-            og.gain.setValueAtTime(0.0001, now + off);
-            og.gain.linearRampToValueAtTime(0.18 * v, now + off + 0.008);
-            og.gain.exponentialRampToValueAtTime(0.0001, now + off + 0.065);
-            o.connect(og); og.connect(dest);
-            o.start(now + off); o.stop(now + off + 0.075);
-          });
+          const a = createAudioToolkit(ac, dest);
+          a.noiseBurst({ pink: true, freq: 450, freqEnd: 2100, duration: 0.38, gain: 0.55 * vol });
+          a.osc({ delay: 0.08, freq: 620, freqEnd: 1180, duration: 0.06, gain: 0.18 * vol });
         },
-
         doorCreak(ac, dest, vol = 1.0) {
-          const now = ac.currentTime + 0.002;
-          const v = clamp(vol, 0.05, 1.5);
-          const osc = ac.createOscillator();
-          const bp = ac.createBiquadFilter();
-          const g = ac.createGain();
-          osc.type = 'sawtooth';
-          osc.frequency.setValueAtTime(220, now);
-          osc.frequency.linearRampToValueAtTime(360, now + 0.18);
-          osc.frequency.linearRampToValueAtTime(290, now + 0.38);
-          osc.frequency.linearRampToValueAtTime(420, now + 0.56);
-          bp.type = 'bandpass';
-          bp.frequency.setValueAtTime(980, now);
-          bp.Q.setValueAtTime(6.5, now);
-          g.gain.setValueAtTime(0.0001, now);
-          g.gain.linearRampToValueAtTime(0.28 * v, now + 0.05);
-          g.gain.exponentialRampToValueAtTime(0.0001, now + 0.58);
-          osc.connect(bp); bp.connect(g); g.connect(dest);
-          osc.start(now); osc.stop(now + 0.6);
+          createAudioToolkit(ac, dest).osc({ type: 'sawtooth', freq: 210, freqEnd: 410, attack: 0.06, duration: 0.58, gain: 0.28 * vol, filterType: 'bandpass', filterFreq: 960, Q: 6.5, reverb: 0.5 });
         },
-
         bell(ac, dest, vol = 1.0) {
-          const now = ac.currentTime + 0.002;
-          const v = clamp(vol, 0.05, 1.5);
-          const partials = [
-            { f: 1046.5, g: 0.35, d: 0.85 },
-            { f: 2093.0, g: 0.20, d: 0.55 },
-            { f: 3135.9, g: 0.12, d: 0.32 }
-          ];
-          partials.forEach((p) => {
-            const osc = ac.createOscillator();
-            const g = ac.createGain();
-            osc.type = 'sine';
-            osc.frequency.setValueAtTime(p.f, now);
-            g.gain.setValueAtTime(0.0001, now);
-            g.gain.linearRampToValueAtTime(p.g * v, now + 0.004);
-            g.gain.exponentialRampToValueAtTime(0.0001, now + p.d);
-            osc.connect(g); g.connect(dest);
-            osc.start(now); osc.stop(now + p.d + 0.02);
-          });
+          const a = createAudioToolkit(ac, dest);
+          [1046.5, 2093, 3135.9].forEach((f, i) => a.osc({ freq: f, duration: 0.85 / (i + 1), gain: (0.34 * vol) / (i + 1), reverb: 0.5 }));
         },
-
         alert(ac, dest, vol = 1.0) {
-          const now = ac.currentTime + 0.002;
-          const v = clamp(vol, 0.05, 1.5);
-          [660, 990].forEach((freq, idx) => {
-            const osc = ac.createOscillator();
-            const g = ac.createGain();
-            const t0 = now + idx * 0.09;
-            osc.type = 'triangle';
-            osc.frequency.setValueAtTime(freq, t0);
-            g.gain.setValueAtTime(0.0001, t0);
-            g.gain.linearRampToValueAtTime(0.36 * v, t0 + 0.008);
-            g.gain.exponentialRampToValueAtTime(0.0001, t0 + 0.14);
-            osc.connect(g); g.connect(dest);
-            osc.start(t0); osc.stop(t0 + 0.16);
-          });
+          const a = createAudioToolkit(ac, dest);
+          a.osc({ type: 'triangle', freq: 660, duration: 0.14, gain: 0.34 * vol, reverb: 0.2 });
+          a.osc({ type: 'triangle', freq: 990, delay: 0.09, duration: 0.16, gain: 0.34 * vol, reverb: 0.2 });
         }
       };
 
       function playSoundTrigger(trigger, variationIdx = 0) {
         if (!audioCtx || !synthBus) return;
-        if (audioCtx.state === 'suspended') {
-          audioCtx.resume().catch(() => {});
-        }
+        if (audioCtx.state === 'suspended') audioCtx.resume().catch(() => {});
         const vol = typeof trigger.volume === 'number' ? trigger.volume : 1.0;
 
         try {
           if (trigger.customFn) {
-            trigger.customFn(audioCtx, synthBus, vol);
+            const toolkit = createAudioToolkit(audioCtx, synthBus);
+            trigger.customFn(audioCtx, synthBus, vol, toolkit);
             return;
           }
           const fn = SFX_LIB[trigger.type];
           if (typeof fn === 'function') {
             fn(audioCtx, synthBus, vol, variationIdx);
           }
-        } catch (err) {
-          // Evita que um erro de áudio quebre o loop de renderização
+        } catch (err) {}
+      }
+
+      // =======================================================================
+      // 5D. NARRADOR (WEB SPEECH API LIVE + FAIXA DE VOZ EXPORTÁVEL MIC/MP3)
+      // =======================================================================
+      function speakNarrationLine(line) {
+        if (!narrationEnabled || isMuted || customVoiceBuffer || isRecording) return;
+        if (!('speechSynthesis' in window) || !line || !line.text) return;
+        try {
+          const utt = new SpeechSynthesisUtterance(line.text);
+          utt.lang = line.lang || 'pt-BR';
+          utt.rate = clamp(Number(line.rate) || 1.0, 0.5, 1.8);
+          utt.pitch = clamp(Number(line.pitch) || 1.0, 0.4, 1.8);
+          utt.volume = clamp(Number(line.volume) || 1.0, 0.1, 1.0);
+          const voices = window.speechSynthesis.getVoices() || [];
+          let chosen = null;
+          if (selectedVoiceURI) chosen = voices.find((v) => v.voiceURI === selectedVoiceURI);
+          if (!chosen) chosen = voices.find((v) => /^pt(-BR)?/i.test(v.lang));
+          if (chosen) utt.voice = chosen;
+          window.speechSynthesis.speak(utt);
+        } catch (e) {}
+      }
+
+      function ensureCustomVoicePlaying(atSec) {
+        if (!customVoiceBuffer || customVoiceNode || !audioCtx || !voiceBus) return;
+        if (atSec >= customVoiceBuffer.duration - 0.05) return;
+        try {
+          const src = audioCtx.createBufferSource();
+          src.buffer = customVoiceBuffer;
+          src.connect(voiceBus);
+          src.onended = () => { if (customVoiceNode === src) customVoiceNode = null; };
+          src.start(0, Math.max(0, atSec));
+          customVoiceNode = src;
+        } catch (e) {}
+      }
+
+      function populateVoiceList() {
+        if (!voiceSelect || !('speechSynthesis' in window)) return;
+        const voices = window.speechSynthesis.getVoices() || [];
+        const ptVoices = voices.filter((v) => /^pt/i.test(v.lang));
+        const list = ptVoices.length ? ptVoices : voices;
+        const prevVal = voiceSelect.value;
+        voiceSelect.innerHTML = '<option value="">Voz automática (pt-BR)</option>';
+        list.forEach((v) => {
+          const opt = document.createElement('option');
+          opt.value = v.voiceURI;
+          opt.textContent = `${v.name} (${v.lang})`;
+          voiceSelect.appendChild(opt);
+        });
+        if (prevVal) voiceSelect.value = prevVal;
+      }
+
+      function initAudioVoiceControls() {
+        if ('speechSynthesis' in window) {
+          populateVoiceList();
+          window.speechSynthesis.onvoiceschanged = populateVoiceList;
+        }
+        if (btnNarrationToggle) {
+          btnNarrationToggle.addEventListener('click', () => {
+            narrationEnabled = !narrationEnabled;
+            btnNarrationToggle.classList.toggle('active', narrationEnabled);
+            narrationToggleText.textContent = narrationEnabled ? 'Narrador: On' : 'Narrador: Off';
+            if (!narrationEnabled && 'speechSynthesis' in window) window.speechSynthesis.cancel();
+          });
+        }
+        if (voiceSelect) {
+          voiceSelect.addEventListener('change', () => { selectedVoiceURI = voiceSelect.value; });
+        }
+        if (btnUploadVoice && voiceFileInput) {
+          btnUploadVoice.addEventListener('click', () => { voiceFileInput.value = ''; voiceFileInput.click(); });
+          voiceFileInput.addEventListener('change', async (e) => {
+            const file = e.target.files && e.target.files[0];
+            if (!file) return;
+            try {
+              await ensureAudioReady();
+              const ab = await file.arrayBuffer();
+              customVoiceBuffer = await audioCtx.decodeAudioData(ab);
+              btnClearVoice.style.display = 'inline-flex';
+              voiceTrackStatus.textContent = `Voz pronta para exportar: "${file.name}" (${customVoiceBuffer.duration.toFixed(1)}s)`;
+              showToast('Faixa de voz carregada! Ela sairá no vídeo exportado.');
+            } catch (err) {
+              showToast('Não foi possível decodificar esse áudio.', 'error');
+            }
+          });
+        }
+        if (btnClearVoice) {
+          btnClearVoice.addEventListener('click', () => {
+            stopAllContinuousAudio();
+            customVoiceBuffer = null;
+            btnClearVoice.style.display = 'none';
+            voiceTrackStatus.textContent = 'TTS ao vivo ativo. Para embutir voz no arquivo exportado, grave no Mic ou suba um .mp3/.wav.';
+            showToast('Faixa de voz removida.');
+          });
+        }
+        if (btnRecordVoice) {
+          btnRecordVoice.addEventListener('click', async () => {
+            if (isRecording) return;
+            if (isRecordingMic) {
+              try { micRecorder.stop(); } catch (e) {}
+              return;
+            }
+            try {
+              await ensureAudioReady();
+              micStream = await navigator.mediaDevices.getUserMedia({ audio: true });
+              micChunks = [];
+              micRecorder = new MediaRecorder(micStream);
+              micRecorder.ondataavailable = (ev) => { if (ev.data && ev.data.size > 0) micChunks.push(ev.data); };
+              micRecorder.onstop = async () => {
+                isRecordingMic = false;
+                btnRecordVoice.classList.remove('rec-mic');
+                btnRecordVoice.textContent = 'Gravar Mic';
+                if (micStream) { micStream.getTracks().forEach((tr) => tr.stop()); micStream = null; }
+                try {
+                  const blob = new Blob(micChunks, { type: micRecorder.mimeType || 'audio/webm' });
+                  customVoiceBuffer = await audioCtx.decodeAudioData(await blob.arrayBuffer());
+                  btnClearVoice.style.display = 'inline-flex';
+                  voiceTrackStatus.textContent = `Voz gravada pronta para exportar (${customVoiceBuffer.duration.toFixed(1)}s)`;
+                  showToast('Narração gravada! Agora ela sai no vídeo exportado.');
+                } catch (e) {
+                  showToast('Erro ao processar gravação do microfone.', 'error');
+                }
+              };
+              stopAllContinuousAudio();
+              hideStartOverlay();
+              currentTime = 0; prevTime = -0.001;
+              isPlaying = true; updatePlayPauseButton();
+              isRecordingMic = true;
+              btnRecordVoice.classList.add('rec-mic');
+              btnRecordVoice.textContent = '⏹ Parar Mic';
+              voiceTrackStatus.textContent = 'Gravando microfone sincronizado com o vídeo... clique em Parar Mic ao terminar.';
+              micRecorder.start();
+            } catch (err) {
+              showToast('Permissão de microfone negada ou indisponível.', 'error');
+            }
+          });
         }
       }
 
+      // Dispara SFX + Notas Musicais + Ambiências Contínuas + Narrador sincronizados
       function triggerScheduledSounds(fromTime, toTime) {
         if (!activeProject || toTime <= fromTime) return;
-        const triggers = activeProject.globalSoundTriggers;
+        if (fromTime < 0) stopAllContinuousAudio(true);
+
+        // 1. Efeitos sonoros pontuais (presets ou customCode livre)
+        const triggers = activeProject.globalSoundTriggers || [];
         for (let i = 0; i < triggers.length; i++) {
           const tr = triggers[i];
           if (fromTime < tr.time && toTime >= tr.time) {
             playSoundTrigger(tr, i);
+          }
+        }
+
+        // 2. Sequenciador musical procedural
+        const notes = activeProject.compiledMusicNotes || [];
+        if (audioCtx && synthBus) {
+          for (let i = 0; i < notes.length; i++) {
+            const n = notes[i];
+            if (fromTime < n.time && toTime >= n.time) {
+              playMusicNote(audioCtx, synthBus, n);
+            }
+          }
+        }
+
+        // 3. Ambiências contínuas (inicia quando entra na faixa, encerra quando sai)
+        const ambs = activeProject.ambienceLayers || [];
+        if (audioCtx && synthBus) {
+          for (let i = 0; i < ambs.length; i++) {
+            const amb = ambs[i];
+            const key = `amb-${i}`;
+            const inside = toTime >= amb.start && toTime < amb.end - 0.05;
+            if (inside && !activeAmbienceStops.has(key)) {
+              const rem = Math.max(0.1, amb.end - toTime);
+              const stopFn = spawnAmbience(audioCtx, synthBus, amb, rem);
+              activeAmbienceStops.set(key, stopFn);
+            } else if (!inside && activeAmbienceStops.has(key)) {
+              const stopFn = activeAmbienceStops.get(key);
+              activeAmbienceStops.delete(key);
+              try { stopFn(); } catch (e) {}
+            }
+          }
+        }
+
+        // 4. Narrador TTS (preview) ou Faixa de Voz Exportável (Mic/MP3)
+        if (customVoiceBuffer) {
+          ensureCustomVoicePlaying(toTime);
+        } else {
+          const lines = activeProject.narrationLines || [];
+          for (let i = 0; i < lines.length; i++) {
+            const line = lines[i];
+            if (fromTime < line.start && toTime >= line.start) {
+              speakNarrationLine(line);
+            }
           }
         }
       }
@@ -3438,13 +3772,13 @@
           .slice(0, 48) || 'video-9x16';
       }
 
-      function compileSoundTrigger(rawTrigger, offsetSec) {
+    function compileSoundTrigger(rawTrigger, offsetSec) {
         const localTime = Number(rawTrigger.time);
         if (!Number.isFinite(localTime) || localTime < 0) return null;
 
         let customFn = null;
         if (typeof rawTrigger.customCode === 'string' && rawTrigger.customCode.trim()) {
-          customFn = new Function('ctx', 'dest', 'vol', rawTrigger.customCode);
+          customFn = new Function('ac', 'dest', 'vol', 'a', 'const ctx = ac;\n' + rawTrigger.customCode);
         }
 
         return {
@@ -3456,6 +3790,43 @@
         };
       }
 
+      function compileMusicBlock(musicObj, offsetSec, maxEndSec) {
+        const out = [];
+        if (!musicObj || typeof musicObj !== 'object' || !Array.isArray(musicObj.tracks)) return out;
+        const bpm = clamp(Number(musicObj.bpm) || 90, 30, 240);
+        const secPerBeat = 60 / bpm;
+        const masterVol = typeof musicObj.volume === 'number' ? musicObj.volume : 0.35;
+        const reverb = typeof musicObj.reverb === 'number' ? musicObj.reverb : 0.4;
+
+        musicObj.tracks.forEach((tr) => {
+          if (!tr || !Array.isArray(tr.notes)) return;
+          const inst = String(tr.instrument || 'piano');
+          const tVol = (typeof tr.volume === 'number' ? tr.volume : 0.6) * masterVol;
+          tr.notes.forEach((entry) => {
+            if (!Array.isArray(entry) || entry.length < 2) return;
+            const pitchOrChord = Array.isArray(entry[0]) ? entry[0] : [entry[0]];
+            const startSec = offsetSec + Number(entry[1]) * secPerBeat;
+            const durSec = Math.max(0.08, (Number(entry[2]) || 1) * secPerBeat);
+            if (!Number.isFinite(startSec) || startSec >= maxEndSec) return;
+            pitchOrChord.forEach((p) => {
+              out.push({ time: startSec, duration: durSec, freq: noteToFreq(p), instrument: inst, volume: tVol / Math.sqrt(pitchOrChord.length), reverb });
+            });
+          });
+        });
+        return out;
+      }
+
+      function compileAmbienceItem(rawAmb, offsetSec, defaultDur) {
+        if (!rawAmb || typeof rawAmb !== 'object') return null;
+        const start = offsetSec + Math.max(0, Number(rawAmb.start) || 0);
+        const end = offsetSec + (Number.isFinite(Number(rawAmb.end)) ? Number(rawAmb.end) : defaultDur);
+        if (end <= start + 0.05) return null;
+        let customFn = null;
+        if (typeof rawAmb.customCode === 'string' && rawAmb.customCode.trim()) {
+          customFn = new Function('ac', 'dest', 'dur', 'vol', 'a', 'const ctx = ac;\n' + rawAmb.customCode);
+        }
+        return { start, end, type: String(rawAmb.type || 'rain'), volume: typeof rawAmb.volume === 'number' ? rawAmb.volume : 0.35, customFn };
+      }
       /**
        * Valida e compila um objeto JSON (Formato A ou Formato B).
        * Lança Error descritivo em caso de problema de estrutura ou sintaxe JS.
@@ -3482,6 +3853,9 @@
         const scenes = [];
         const globalSoundTriggers = [];
         const globalSubtitles = [];
+        const compiledMusicNotes = [];
+        const ambienceLayers = [];
+        const narrationLines = [];
         let cursor = 0;
 
         if (isFormatB) {
@@ -3633,6 +4007,38 @@
         const id = existingId || rawClone.id || ('proj-' + Date.now() + '-' + Math.floor(Math.random() * 10000));
         rawClone.id = id;
 
+        if (rawInput.music) compiledMusicNotes.push(...compileMusicBlock(rawInput.music, 0, cursor));
+        if (Array.isArray(rawInput.ambience)) {
+          rawInput.ambience.forEach((a) => { const c = compileAmbienceItem(a, 0, cursor); if (c) ambienceLayers.push(c); });
+        }
+        if (Array.isArray(rawInput.narration)) {
+          rawInput.narration.forEach((n) => {
+            if (n && typeof n.text === 'string' && n.text.trim()) {
+              narrationLines.push({ start: Math.max(0, Number(n.start) || 0), text: n.text.trim(), rate: n.rate, pitch: n.pitch, volume: n.volume, lang: n.lang });
+            }
+          });
+        }
+        if (isFormatB) {
+          let segCursor = 0;
+          rawInput.segments.forEach((seg) => {
+            const sDur = Number(seg.duration) || 0;
+            if (seg.music) compiledMusicNotes.push(...compileMusicBlock(seg.music, segCursor, segCursor + sDur));
+            if (Array.isArray(seg.ambience)) {
+              seg.ambience.forEach((a) => { const c = compileAmbienceItem(a, segCursor, sDur); if (c) ambienceLayers.push(c); });
+            }
+            if (Array.isArray(seg.narration)) {
+              seg.narration.forEach((n) => {
+                if (n && typeof n.text === 'string' && n.text.trim()) {
+                  narrationLines.push({ start: segCursor + Math.max(0, Number(n.start) || 0), text: n.text.trim(), rate: n.rate, pitch: n.pitch, volume: n.volume, lang: n.lang });
+                }
+              });
+            }
+            segCursor += sDur;
+          });
+        }
+        compiledMusicNotes.sort((a, b) => a.time - b.time);
+        narrationLines.sort((a, b) => a.start - b.start);
+
         return {
           id,
           raw: rawClone,
@@ -3644,6 +4050,9 @@
           segments: compiledSegments,
           scenes,
           globalSoundTriggers,
+          compiledMusicNotes,
+          ambienceLayers,
+          narrationLines,
           globalSubtitles
         };
       }
@@ -3877,6 +4286,7 @@
             if (isRecording) return;
             await ensureAudioReady();
             hideStartOverlay();
+            stopAllContinuousAudio();
             currentTime = clamp(sc.start, 0, dur);
             prevTime = currentTime - 0.001;
             renderFrame(currentTime);
@@ -3902,6 +4312,7 @@
         const { seekTo = 0, autoPlay = false, save = true } = options;
 
         clearRuntimeError();
+        stopAllContinuousAudio();
         activeProject = compiled;
         currentTime = clamp(seekTo, 0, compiled.totalDuration);
         prevTime = currentTime - 0.001;
@@ -3980,6 +4391,7 @@
           btnPlayPause.setAttribute('aria-label', 'Reproduzir vídeo');
           playPauseIcon.innerHTML = '<polygon points="6 4 20 12 6 20 6 4"></polygon>';
         }
+        if (!isPlaying && !isRecording) stopAllContinuousAudio();
       }
 
       function updateMuteButton() {
@@ -4445,6 +4857,7 @@
             await audioCtx.resume();
           }
           hideStartOverlay();
+          stopAllContinuousAudio();
 
           wasPlayingBeforeRecord = isPlaying;
           isPlaying = false;
@@ -4527,7 +4940,7 @@
               cleanupRecordingUI();
             }
           };
-
+if (activeProject.narrationLines && activeProject.narrationLines.length && !customVoiceBuffer) showToast('Exportando com música/SFX. Para incluir narração no arquivo, grave no Mic ou suba um .mp3.', 'amber');
           // Timeslice de 100ms garante gravação estável até 60 segundos
           isRecording = true;
           isPlaying = true;
@@ -4918,39 +5331,54 @@
         }
       }
 
-      function buildCreateVideoPrompt() {
+     function buildCreateVideoPrompt() {
         return [
-          'Atue como um Diretor de Animação Procedural 2D especialista em HTML5 Canvas e Web Audio API.',
-          'Crie um vídeo animado vertical 9:16 (1080x1920) para o CineCode JSON Studio e devolva APENAS um bloco JSON válido, sem explicações fora do JSON.',
+          'Atue como um Diretor de Animação Procedural 2D + Sound Designer especialista em HTML5 Canvas e Web Audio API.',
+          'Crie um vídeo animado vertical 9:16 (1080x1920) para o CineCode JSON Studio e devolva APENAS um JSON válido, sem explicações fora do JSON.',
           '',
-          'CONTRATO JSON OBRIGATÓRIO:',
+          'CONTRATO JSON COMPLETO (SUPORTA MÚSICA, AMBIÊNCIA CONTÍNUA, SONS LIVRES E NARRADOR):',
           '{',
-          '  "title": "Título curto e chamativo",',
-          '  "subtitle": "Descrição curta em 1 frase",',
-          '  "duration": 12.0,',
+          '  "title": "Título curto",',
+          '  "subtitle": "Resumo em 1 frase",',
+          '  "duration": 16.0,',
           '  "subtitlePosition": "top",',
+          '  "music": {',
+          '    "bpm": 80, "volume": 0.35, "reverb": 0.55,',
+          '    "tracks": [',
+          '      { "instrument": "pad", "volume": 0.5, "notes": [["D2",0,4], [["D3","F3","A3"],0,4]] },',
+          '      { "instrument": "musicBox", "volume": 0.45, "notes": [["D5",0,1], ["F5",1,1], ["A5",2,2]] }',
+          '    ]',
+          '  },',
+          '  "ambience": [',
+          '    { "start": 0, "end": 16, "type": "storm", "volume": 0.35 },',
+          '    { "start": 8, "end": 16, "volume": 0.3, "customCode": "// opcional: som contínuo livre (ac, dest, dur, vol, a)" }',
+          '  ],',
+          '  "narration": [',
+          '    { "start": 0.4, "text": "Fala do narrador em português sincronizada com a cena.", "rate": 0.95, "pitch": 0.88 }',
+          '  ],',
           '  "segments": [',
           '    {',
-          '      "id": "seg-1",',
-          '      "title": "1. Nome da Cena",',
-          '      "duration": 6.0,',
-          '      "cameraLabel": "PAN SUAVE · 1.0x",',
-          '      "transitionIn": "cut",',
+          '      "id": "seg-1", "title": "1. Cena", "duration": 8.0, "cameraLabel": "ZOOM · 1.15x", "transitionIn": "fade",',
           '      "soundTriggers": [',
-          '        { "time": 1.2, "type": "footstep", "volume": 0.9 }',
+          '        { "time": 1.2, "volume": 0.9, "customCode": "a.osc({type:\'sine\',freq:110,freqEnd:32,duration:0.8,gain:0.9*vol,reverb:0.6}); a.noiseBurst({pink:true,filterType:\'lowpass\',freq:480,freqEnd:90,duration:1.4,gain:0.7*vol,reverb:0.7});" }',
           '      ],',
-          '      "renderBody": "// JS puro usando ctx, t (0..duration do segmento), duration e h"',
+          '      "renderBody": "// JS puro determinístico usando ctx, t, duration, h"',
           '    }',
           '  ]',
           '}',
           '',
-          'REGRAS TÉCNICAS DO MOTOR:',
-          '1. Canvas interno fixo: 1080x1920 (9:16). Soma das durações dos segmentos: até 60.0s. Transições aceitas em transitionIn: "cut", "fade" ou "zoom".',
-          '2. renderBody é o corpo de (ctx, t, duration, h) => { ... } e DEVE ser 100% determinístico em função de `t` (NUNCA use variáveis acumulativas entre frames). Zero imagens/fontes/URLs externas.',
-          '3. Helpers disponíveis no objeto `h`: h.clamp(v,min,max), h.lerp(a,b,p), h.invLerp(a,b,v), h.easeInOutCubic(x), h.easeOutCubic(x), h.easeOutBack(x), h.easeOutQuad(x), h.smoothstep(e0,e1,x), h.roundRect(ctx,x,y,w,h,r), h.drawShadow(ctx,x,y,rx,ry,alpha), h.drawImpactRings(ctx,x,y,progress,color), h.drawSubtitle(ctx, text, progress), h.setCameraLabel(label).',
-          '4. Efeitos sonoros prontos para soundTriggers[].type: woodKnock, footstep, pop, whoosh, chime, whistle, bark, meow, boing, impact, crash, applause, sadTrombone, laser, splash, doorCreak, bell, alert. Opcionalmente use "customCode" com JS Web Audio (recebe ctx, dest, vol).',
-          '5. Composição 9:16 cinematográfica: mantenha a ação principal no centro (Y entre 850 e 1450), deixando topo (Y até 420) e base (Y acima de 1520) livres para legendas. Use câmera virtual (pan + zoom), paralaxe no fundo, sombras ovais no chão, cenários vivos (nuvens, partículas, luzes) e personagens articulados com movimento orgânico contínuo (proibido T-pose estático).',
-          '6. Mantenha o código dentro de renderBody compacto (variáveis curtas e sem espaços extras) para garantir que o JSON nunca seja truncado e feche todas as chaves perfeitamente.',
+          'REGRAS DE ÁUDIO LIVRE (NÃO SE LIMITE A PRESETS!):',
+          '1. CRIE SONS LIVRES com "customCode" sempre que a cena pedir sons específicos (trovão, sussurro fantasmagórico, motor, espada, risada, porta batendo, explosão etc.).',
+          '   customCode recebe (ac, dest, vol, a) onde `a` oferece: a.osc({type,freq,freqEnd,delay,attack,duration,gain,filterType,filterFreq,filterEnd,Q,reverb}), a.noiseBurst({pink,filterType,freq,freqEnd,Q,delay,attack,duration,gain,reverb}), a.note("C4"), a.noise, a.pinkNoise, a.reverb, a.track(node).',
+          '2. MÚSICA DE FUNDO ("music"): componha melodias e acordes reais adequados ao clima! Instrumentos prontos: piano, pad, strings, musicBox, bass, synth, organ, bell, kick, snare, hihat. Cada nota é ["NotaOuAcorde", beatInicio, duracaoEmBeats].',
+          '3. AMBIÊNCIAS CONTÍNUAS ("ambience"): use presets (rain, storm, wind, horrorDrone, forestNight, policeSiren, heartbeat, fire, crowd, tensionPulse) OU "customCode" contínuo recebendo (ac, dest, dur, vol, a).',
+          '4. NARRADOR ("narration"): sempre que a história tiver narração, adicione falas curtas sincronizadas com os segmentos (ajustando rate e pitch ao clima).',
+          '5. Atalhos de SFX opcionais se forem úteis: woodKnock, footstep, pop, whoosh, chime, whistle, bark, meow, boing, impact, crash, applause, sadTrombone, laser, splash, doorCreak, bell, alert.',
+          '',
+          'REGRAS VISUAIS 9:16 (1080x1920):',
+          '- Soma das durações até 60s. renderBody 100% determinístico em `t` (zero imagens/URLs externas).',
+          '- Helpers `h`: clamp, lerp, invLerp, smoothstep, easeInOutCubic, easeOutCubic, easeOutBack, easeOutQuad, roundRect, drawShadow, drawImpactRings, drawSubtitle(ctx, text, progress), setCameraLabel.',
+          '- Ação principal entre Y=850 e Y=1450 (topo e base livres p/ legendas). Câmera virtual, paralaxe, sombras no chão e personagens articulados em movimento contínuo. Código compacto para não truncar o JSON.',
           '',
           'IDEIA DO VÍDEO: [COLE SUA IDEIA AQUI]'
         ].join('\n');
@@ -4979,8 +5407,16 @@
           `- Duração sugerida para o novo segmento: até ${suggestedSegDur}s (nunca ultrapassar ${remaining.toFixed(1)}s restantes).`,
           '- Mantenha exatamente os mesmos personagens, paleta de cores, proporções e estilo visual das cenas anteriores.',
           '- Use transitionIn: "fade" ou "zoom", canvas 1080x1920, ação principal entre Y=850 e Y=1450, câmera virtual, animações determinísticas em `t` usando o objeto `h`, legendas com h.drawSubtitle(ctx, texto, progresso) e código compacto.',
-          '- Sons prontos: woodKnock, footstep, pop, whoosh, chime, whistle, bark, meow, boing, impact, crash, applause, sadTrombone, laser, splash, doorCreak, bell, alert.',
-          '',
+          '' ,
+        
+          'REGRAS DE ÁUDIO LIVRE (NÃO SE LIMITE A PRESETS!):',
+          '1. CRIE SONS LIVRES com "customCode" sempre que a cena pedir sons específicos (trovão, sussurro fantasmagórico, motor, espada, risada, porta batendo, explosão etc.).',
+          '   customCode recebe (ac, dest, vol, a) onde `a` oferece: a.osc({type,freq,freqEnd,delay,attack,duration,gain,filterType,filterFreq,filterEnd,Q,reverb}), a.noiseBurst({pink,filterType,freq,freqEnd,Q,delay,attack,duration,gain,reverb}), a.note("C4"), a.noise, a.pinkNoise, a.reverb, a.track(node).',
+          '2. MÚSICA DE FUNDO ("music"): componha melodias e acordes reais adequados ao clima! Instrumentos prontos: piano, pad, strings, musicBox, bass, synth, organ, bell, kick, snare, hihat. Cada nota é ["NotaOuAcorde", beatInicio, duracaoEmBeats].',
+          '3. AMBIÊNCIAS CONTÍNUAS ("ambience"): use presets (rain, storm, wind, horrorDrone, forestNight, policeSiren, heartbeat, fire, crowd, tensionPulse) OU "customCode" contínuo recebendo (ac, dest, dur, vol, a).',
+          '4. NARRADOR ("narration"): sempre que a história tiver narração, adicione falas curtas sincronizadas com os segmentos (ajustando rate e pitch ao clima).',
+          '5. Atalhos de SFX opcionais se forem úteis: woodKnock, footstep, pop, whoosh, chime, whistle, bark, meow, boing, impact, crash, applause, sadTrombone, laser, splash, doorCreak, bell, alert.',
+          '',          '',
           'FORMATO EXATO DE SAÍDA (APENAS 1 SEGMENTO NOVO):',
           '{',
           `  "title": "${title} — Continuação",`,
@@ -5122,6 +5558,7 @@
         if (isRecording || !activeProject) return;
         await ensureAudioReady();
         hideStartOverlay();
+        stopAllContinuousAudio();
         currentTime = 0;
         prevTime = -0.001;
         isPlaying = true;
@@ -5177,6 +5614,7 @@
         if (isRecording || !activeProject) return;
         await ensureAudioReady();
         hideStartOverlay();
+        stopAllContinuousAudio();
         isDragging = true;
         wasPlayingBeforeDrag = isPlaying;
         isPlaying = false;
@@ -5229,6 +5667,7 @@
         loadLibraryFromStorage();
         initExportSelectors();
         renderSfxPreviewTags();
+        initAudioVoiceControls();
         updatePlayPauseButton();
         updateMuteButton();
         applySubtitleModeUI();
