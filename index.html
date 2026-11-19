@@ -3581,7 +3581,7 @@ function speakNarrationLine(line) {
             if (!res.ok) throw new Error(`HTTP ${res.status}`);
             const ab = await res.arrayBuffer();
             const buf = await audioCtx.decodeAudioData(ab);
-            clips.push({ start: ln.start, buffer: buf });
+            clips.push({ start: ln.start, text: ln.text, buffer: buf });
           }
 
           // Monta a faixa única sincronizada na timeline + janelas de auto-ducking
@@ -3593,7 +3593,7 @@ function speakNarrationLine(line) {
             const actualEnd = actualStart + c.buffer.duration;
             cursorEnd = actualEnd + 0.08;
             maxEnd = Math.max(maxEnd, cursorEnd);
-            return { start: actualStart, end: actualEnd, buffer: c.buffer };
+            return { start: actualStart, end: actualEnd, text: c.text, buffer: c.buffer };
           });
 
           const totalFrames = Math.ceil(maxEnd * sr);
@@ -3610,6 +3610,17 @@ function speakNarrationLine(line) {
           customVoiceBuffer = master;
           voiceDuckWindows = placed.map((p) => ({ start: p.start, end: p.end }));
           adjustProjectDurationForVoice(cursorEnd);
+          activeProject.globalSubtitles = placed.map((p, idx) => {
+         const nextStart = idx + 1 < placed.length ? placed[idx + 1].start : activeProject.totalDuration;
+         return {
+           start: p.start,
+           speakEnd: p.end,
+           end: Math.min(nextStart - 0.03, p.end + 0.25),
+           text: p.text,
+           options: {}
+         };
+       });
+       activeProject.hasSyncedNarrationSubs = true;
           btnClearVoice.style.display = 'inline-flex';
           voiceTrackStatus.textContent = `Voz Neural pronta e sincronizada (${clips.length} falas) — sai no vídeo exportado!`;
           if (!silent) showToast('Narração neural pronta! Já vai embutida no vídeo exportado.');
@@ -4368,6 +4379,7 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
 
         c.restore();
       }
+      
       // Objeto `h` passado para todo `renderBody(ctx, t, duration, h)`
       const RENDER_HELPERS = {
         clamp,
@@ -4385,7 +4397,10 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
         roundRect,
         drawShadow,
         drawImpactRings,
-        drawSubtitle,
+        drawSubtitle(c, text, progress, options) {
+          if (activeProject && activeProject.hasSyncedNarrationSubs) return;
+          return drawSubtitle(c, text, progress, options);
+        },
         setCameraLabel(label) {
           if (typeof label === 'string' && label.trim()) {
             dynamicCameraLabel = label.trim();
@@ -4686,8 +4701,22 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
         compiledMusicNotes.sort((a, b) => a.time - b.time);
         narrationLines.sort((a, b) => a.start - b.start);
         narrationLines.forEach((ln, i) => {
+          
   ln.maxDur = (i + 1 < narrationLines.length ? narrationLines[i + 1].start : cursor) - ln.start;
 });
+        const hasSyncedNarrationSubs = narrationLines.length > 0;
+        if (hasSyncedNarrationSubs) {
+          globalSubtitles.length = 0;
+          narrationLines.forEach((ln) => {
+            globalSubtitles.push({
+              start: ln.start,
+              end: ln.start + Math.max(0.5, ln.maxDur - 0.06),
+              speakEnd: ln.start + Math.max(0.5, ln.maxDur - 0.15),
+              text: ln.text,
+              options: {}
+            });
+          });
+        }
 
         return {
           id,
@@ -4703,6 +4732,7 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
           compiledMusicNotes,
           ambienceLayers,
           narrationLines,
+          hasSyncedNarrationSubs,
           globalSubtitles
         };
       }
@@ -4822,7 +4852,7 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
             const fadeOut = remaining < 0.16 ? clamp(remaining / 0.16, 0, 1) : 1.0;
            const opts = Object.assign({}, sub.options || {}, {
   alpha: (sub.options && sub.options.alpha !== undefined ? sub.options.alpha : 1) * fadeOut,
-  readProgress: clamp(elapsed / Math.max(0.1, sub.end - sub.start), 0, 1)
+ readProgress: clamp(elapsed / Math.max(0.1, (sub.speakEnd || sub.end) - sub.start), 0, 1)
 });
             drawSubtitle(ctx, sub.text, popProg, opts);
           }
@@ -6192,7 +6222,7 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
           '   customCode recebe (ac, dest, vol, a) onde `a` oferece: a.osc({type,freq,freqEnd,delay,attack,duration,gain,filterType,filterFreq,filterEnd,Q,reverb}), a.noiseBurst({pink,filterType,freq,freqEnd,Q,delay,attack,duration,gain,reverb}), a.note("C4"), a.noise, a.pinkNoise, a.reverb, a.track(node).',
           '2. MÚSICA DE FUNDO ("music"): componha melodias e acordes reais adequados ao clima! Instrumentos prontos: piano, pad, strings, musicBox, bass, synth, organ, bell, kick, snare, hihat. Cada nota é ["NotaOuAcorde", beatInicio, duracaoEmBeats].',
           '3. AMBIÊNCIAS CONTÍNUAS ("ambience"): use presets (rain, storm, wind, horrorDrone, forestNight, policeSiren, heartbeat, fire, crowd, tensionPulse) OU "customCode" contínuo recebendo (ac, dest, dur, vol, a).',
-          '4. NARRADOR ("narration"): sempre que a história tiver narração, adicione falas curtas sincronizadas com os segmentos (ajustando rate e pitch ao clima).',
+         '4. NARRADOR ("narration"): sempre que a história tiver narração, adicione falas curtas sincronizadas com os segmentos (ajustando rate e pitch ao clima). Quando usar narration, o motor gera as legendas automaticamente a partir dela — não precisa duplicar subtitles.',
           '5. Atalhos de SFX opcionais se forem úteis: woodKnock, footstep, pop, whoosh, chime, whistle, bark, meow, boing, impact, crash, applause, sadTrombone, laser, splash, doorCreak, bell, alert.',
           '',
           'REGRAS VISUAIS 9:16 (1080x1920):',
