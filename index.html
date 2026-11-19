@@ -1581,6 +1581,23 @@
         align-items: stretch;
       }
     }
+    #toast, .toast {
+  position: fixed !important;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 9999;
+  background: rgba(15, 23, 42, 0.96);
+  color: #e2e8f0;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  padding: 10px 18px;
+  border-radius: 10px;
+  pointer-events: none;
+  white-space: nowrap;
+}
+#toast:empty, .toast:empty {
+  display: none;
+}
   </style>
 </head>
 <body>
