@@ -1989,6 +1989,7 @@
             <input type="file" id="voiceFileInput" accept="audio/*" style="display:none;" />
             <button type="button" class="btn-voice-sm" id="btnClearVoice" style="display:none;" title="Remover faixa de voz">× Limpar</button>
           </div>
+          
           <div class="mixer-grid">
             <label class="mixer-channel">
               <span class="mixer-head"><span>Voz / Narrador</span><span class="mixer-val" id="volVoiceVal">120%</span></span>
@@ -3893,9 +3894,9 @@ function speakNarrationLine(line) {
 
           const lineWords = lines.map((ln) => ln.split(/\s+/).filter(Boolean));
           const totalWords = lineWords.reduce((sum, arr) => sum + arr.length, 0) || 1;
-          const readP = options.readProgress !== undefined
+        const readP = options.readProgress !== undefined
             ? clamp(options.readProgress, 0, 1)
-            : (progress < 0.995 ? clamp(progress, 0, 1) : clamp(currentSegProgress, 0, 1));
+            : clamp(currentSegProgress, 0, 1);
           const activeWordIdx = Math.min(totalWords - 1, Math.floor(readP * totalWords));
           const spaceW = c.measureText(' ').width;
 
@@ -4013,7 +4014,227 @@ function speakNarrationLine(line) {
         }
         c.restore();
       }
+/**
+       * Desenha personagem estilizado completo (âncora x,y = pés no chão).
+       * Garante olhos com brilho e piscadas, sobrancelhas, boca expressiva, cabelo,
+       * articulação orgânica e objetos na mão para qualquer cena.
+       */
+      function drawCharacter(c, x, y, opts = {}) {
+        const t = Number(opts.t) || 0;
+        const sc = opts.scale !== undefined ? opts.scale : 1.0;
+        const dir = opts.facing === -1 ? -1 : 1;
+        const pose = opts.pose || 'idle'; // idle | walk | run | celebrate | paint | phone | shock | sit
+        const mood = opts.mood || 'happy'; // happy | excited | neutral | confused | shocked | sad | angry
+        const skin = opts.skin || '#f3c19d';
+        const shirt = opts.shirt || '#3b82f6';
+        const pants = opts.pants || '#1e293b';
+        const shoe = opts.shoe || '#0f172a';
+        const hairColor = opts.hairColor || '#1c1917';
+        const hairStyle = opts.hairStyle || 'spiky'; // spiky | short | long | cap | bald
+        const prop = opts.prop || 'none'; // none | money | card | phone | roller | bag
+        const talking = Boolean(opts.talking);
 
+        const isMoving = pose === 'walk' || pose === 'run';
+        const speed = pose === 'run' ? 14 : 7.5;
+        const wPhase = t * speed;
+        const swing = isMoving ? Math.sin(wPhase) * (pose === 'run' ? 0.72 : 0.48) : 0;
+        const bounce = isMoving ? Math.abs(Math.sin(wPhase)) * (pose === 'run' ? 16 : 9)
+          : (pose === 'celebrate' ? Math.abs(Math.sin(t * 9)) * 18 : Math.sin(t * 2.6) * 2.5);
+        const lean = pose === 'run' ? 0.14 : (pose === 'walk' ? 0.06 : (pose === 'shock' ? -0.08 : 0));
+
+        c.save();
+        c.translate(x, y);
+        c.scale(dir * sc, sc);
+
+        // Sombra no chão
+        drawShadow(c, 0, 6, 50 * (1 - bounce * 0.008), 13, 0.30);
+
+        const hipY = (pose === 'sit' ? -82 : -112) - bounce;
+        const shX = Math.sin(lean) * 92;
+        const shY = hipY - Math.cos(lean) * 92;
+        const hdX = shX + Math.sin(lean) * 52;
+        const hdY = shY - Math.cos(lean) * 52;
+
+        const limb = (x1, y1, x2, y2, x3, y3, col, w) => {
+          c.strokeStyle = col; c.lineWidth = w; c.lineCap = 'round'; c.lineJoin = 'round';
+          c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.lineTo(x3, y3); c.stroke();
+        };
+
+        // Pernas
+        const drawLeg = (ang, offX, col) => {
+          if (pose === 'sit') {
+            limb(offX, hipY, offX + 46, hipY + 12, offX + 54, -8, col, 24);
+            c.fillStyle = shoe; c.beginPath(); c.ellipse(offX + 64, -4, 21, 10, 0, 0, Math.PI * 2); c.fill();
+            return;
+          }
+          const kx = offX + Math.sin(ang) * 56, ky = hipY + Math.cos(ang) * 56;
+          const bend = isMoving ? Math.max(0, -Math.cos(wPhase + (offX < 0 ? Math.PI : 0))) * 0.55 : 0;
+          const fx = kx + Math.sin(ang - bend) * 56;
+          const fy = Math.min(-6, ky + Math.cos(ang - bend) * 56);
+          limb(offX, hipY, kx, ky, fx, fy, col, 24);
+          c.fillStyle = shoe; c.beginPath(); c.ellipse(fx + 9, fy + 3, 21, 10, 0, 0, Math.PI * 2); c.fill();
+        };
+
+        // Braço traseiro
+        let baEX = shX - 24, baEY = shY + 46, baHX = shX - 18, baHY = shY + 86;
+        if (pose === 'celebrate' || pose === 'shock') {
+          baEX = shX - 38; baEY = shY - 12; baHX = shX - 54; baHY = shY - 56 + Math.sin(t * 10) * 6;
+        } else if (isMoving) {
+          baEX = shX + Math.sin(-swing) * 44; baEY = shY + 12 + Math.cos(-swing) * 44;
+          baHX = baEX + Math.sin(-swing + 0.3) * 40; baHY = baEY + Math.cos(-swing + 0.3) * 40;
+        }
+        limb(shX - 8, shY + 14, baEX, baEY, baHX, baHY, shirt, 21);
+        c.fillStyle = skin; c.beginPath(); c.arc(baHX, baHY, 12, 0, Math.PI * 2); c.fill();
+
+        drawLeg(-swing, -11, pants);
+        drawLeg(swing, 11, pants);
+
+        // Tronco / Camisa com volume
+        c.save();
+        c.translate(shX * 0.5, (hipY + shY) * 0.5);
+        c.rotate(lean);
+        c.fillStyle = shirt;
+        roundRect(c, -34, -52, 68, 108, 28);
+        c.fill();
+        c.fillStyle = 'rgba(255,255,255,0.16)';
+        roundRect(c, -26, -46, 22, 92, 14);
+        c.fill();
+        c.fillStyle = 'rgba(255,255,255,0.75)';
+        c.beginPath(); c.arc(6, -48, 12, 0, Math.PI); c.fill();
+        c.restore();
+
+        // Cabeça + rosto expressivo (SEMPRE com olhos que piscam, sobrancelhas e boca)
+        c.save();
+        c.translate(hdX, hdY);
+        const headTilt = mood === 'confused' ? 0.14 : (mood === 'sad' ? 0.1 : Math.sin(t * 2) * 0.03);
+        c.rotate(headTilt);
+
+        // Pescoço e orelha
+        c.fillStyle = skin;
+        c.fillRect(-10, 30, 20, 22);
+        const skGrad = c.createRadialGradient(-10, -12, 8, 0, 0, 48);
+        skGrad.addColorStop(0, '#ffe4cc');
+        skGrad.addColorStop(1, skin);
+        c.fillStyle = skGrad;
+        c.beginPath(); c.arc(0, 0, 44, 0, Math.PI * 2); c.fill();
+        c.fillStyle = skin;
+        c.beginPath(); c.arc(-36, 4, 9, 0, Math.PI * 2); c.fill();
+
+        // Cabelo / Boné
+        if (hairStyle !== 'bald') {
+          c.fillStyle = hairColor;
+          c.beginPath();
+          c.arc(-3, -9, 45, Math.PI * 0.94, Math.PI * 2.02);
+          if (hairStyle === 'spiky') {
+            c.lineTo(36, -34); c.lineTo(14, -58); c.lineTo(0, -42); c.lineTo(-18, -60); c.lineTo(-34, -36);
+          } else if (hairStyle === 'long') {
+            c.lineTo(38, 28); c.lineTo(26, 26); c.lineTo(26, -16); c.lineTo(-28, -16); c.lineTo(-34, 34); c.lineTo(-46, 28);
+          }
+          c.closePath();
+          c.fill();
+          if (hairStyle === 'cap') {
+            c.fillStyle = shirt;
+            c.beginPath(); c.arc(0, -14, 45, Math.PI, Math.PI * 2); c.fill();
+            c.fillRect(10, -20, 46, 11);
+          }
+        }
+
+        // Bochechas
+        c.fillStyle = 'rgba(244, 114, 140, 0.24)';
+        c.beginPath(); c.ellipse(-2, 10, 8, 5, 0, 0, Math.PI * 2); c.ellipse(30, 10, 8, 5, 0, 0, Math.PI * 2); c.fill();
+
+        // Olhos com brilho + piscada automática
+        const blink = mood !== 'shocked' && ((t % 3.1) > 2.97);
+        const eyeY = -4;
+        const eyes = [4, 26];
+        const eyeR = mood === 'shocked' ? 9.5 : 7.5;
+        eyes.forEach((ex) => {
+          if (blink) {
+            c.strokeStyle = '#0f172a'; c.lineWidth = 4; c.lineCap = 'round';
+            c.beginPath(); c.moveTo(ex - 6, eyeY); c.lineTo(ex + 6, eyeY); c.stroke();
+          } else {
+            c.fillStyle = '#ffffff';
+            c.beginPath(); c.ellipse(ex, eyeY, eyeR, eyeR * 1.15, 0, 0, Math.PI * 2); c.fill();
+            c.fillStyle = '#0f172a';
+            const pupR = mood === 'shocked' ? 3.8 : 4.6;
+            c.beginPath(); c.arc(ex + 1.5, eyeY, pupR, 0, Math.PI * 2); c.fill();
+            c.fillStyle = '#ffffff';
+            c.beginPath(); c.arc(ex + 3, eyeY - 2, 1.9, 0, Math.PI * 2); c.fill();
+          }
+        });
+
+        // Sobrancelhas expressivas
+        c.strokeStyle = hairColor; c.lineWidth = 4; c.lineCap = 'round';
+        eyes.forEach((ex, idx) => {
+          const y1 = eyeY - 14 + (mood === 'angry' ? (idx ? -3 : 3) : (mood === 'sad' ? (idx ? 3 : -3) : (mood === 'shocked' ? -5 : 0)));
+          const y2 = eyeY - 14 + (mood === 'angry' ? (idx ? 3 : -3) : (mood === 'sad' ? (idx ? -3 : 3) : (mood === 'shocked' ? -5 : 0)));
+          c.beginPath(); c.moveTo(ex - 7, y1); c.lineTo(ex + 7, y2); c.stroke();
+        });
+
+        // Boca expressiva
+        c.strokeStyle = '#5c2d1c'; c.lineWidth = 4; c.lineCap = 'round';
+        const talkOpen = talking ? (0.35 + Math.abs(Math.sin(t * 16)) * 0.65) : 0;
+        if (mood === 'shocked') {
+          c.fillStyle = '#7f1d1d';
+          c.beginPath(); c.ellipse(15, 19, 9, 12, 0, 0, Math.PI * 2); c.fill(); c.stroke();
+        } else if (mood === 'excited' || talkOpen > 0.5) {
+          c.fillStyle = '#991b1b';
+          c.beginPath(); c.arc(15, 14, 12, 0, Math.PI); c.closePath(); c.fill(); c.stroke();
+        } else if (mood === 'sad' || mood === 'angry') {
+          c.beginPath(); c.arc(15, 25, 11, Math.PI * 1.15, Math.PI * 1.85); c.stroke();
+        } else if (mood === 'confused' || mood === 'neutral') {
+          c.beginPath(); c.moveTo(6, 18); c.lineTo(24, 16); c.stroke();
+        } else {
+          c.beginPath(); c.arc(15, 12, 12, 0.15, Math.PI - 0.15); c.stroke();
+        }
+        c.restore();
+
+        // Braço frontal + objeto na mão (`prop`)
+        let faEX = shX + 26, faEY = shY + 46, faHX = shX + 34, faHY = shY + 82;
+        if (pose === 'celebrate' || pose === 'shock') {
+          faEX = shX + 42; faEY = shY - 12; faHX = shX + 58; faHY = shY - 58 - Math.sin(t * 10) * 6;
+        } else if (pose === 'paint') {
+          const strokeY = Math.sin(t * 9) * 34;
+          faEX = shX + 46; faEY = shY + 24; faHX = shX + 78; faHY = shY - 10 + strokeY;
+        } else if (pose === 'phone') {
+          faEX = shX + 34; faEY = shY + 42; faHX = shX + 64; faHY = shY + 12;
+        } else if (isMoving) {
+          faEX = shX + Math.sin(swing) * 44; faEY = shY + 12 + Math.cos(swing) * 44;
+          faHX = faEX + Math.sin(swing + 0.3) * 40; faHY = faEY + Math.cos(swing + 0.3) * 40;
+        }
+        limb(shX + 8, shY + 14, faEX, faEY, faHX, faHY, shirt, 22);
+        c.fillStyle = skin; c.beginPath(); c.arc(faHX, faHY, 12.5, 0, Math.PI * 2); c.fill();
+
+        if (prop === 'money') {
+          c.save(); c.translate(faHX + 14, faHY - 16); c.rotate(0.18);
+          c.fillStyle = '#16a34a'; roundRect(c, -26, -16, 52, 32, 6); c.fill();
+          c.strokeStyle = '#bbf7d0'; c.lineWidth = 3; c.stroke();
+          c.fillStyle = '#ffffff'; c.font = '900 18px Inter,sans-serif'; c.textAlign = 'center'; c.fillText('R$', 0, 6);
+          c.restore();
+        } else if (prop === 'card') {
+          c.save(); c.translate(faHX + 18, faHY - 6); c.rotate(-0.15);
+          c.fillStyle = '#0f172a'; roundRect(c, -26, -17, 52, 34, 6); c.fill();
+          c.fillStyle = '#facc15'; roundRect(c, -18, -6, 12, 10, 2); c.fill();
+          c.restore();
+        } else if (prop === 'phone') {
+          c.save(); c.translate(faHX + 12, faHY - 14); c.rotate(-0.2);
+          c.fillStyle = '#0f172a'; roundRect(c, -14, -24, 28, 48, 6); c.fill();
+          c.fillStyle = '#38bdf8'; roundRect(c, -10, -18, 20, 34, 3); c.fill();
+          c.restore();
+        } else if (prop === 'roller') {
+          c.save(); c.translate(faHX, faHY);
+          c.strokeStyle = '#64748b'; c.lineWidth = 8; c.beginPath(); c.moveTo(0, 10); c.lineTo(0, -68); c.lineTo(18, -68); c.stroke();
+          c.fillStyle = '#facc15'; roundRect(c, -8, -86, 54, 26, 8); c.fill();
+          c.restore();
+        } else if (prop === 'bag') {
+          c.save(); c.translate(faHX + 4, faHY + 28);
+          c.strokeStyle = '#facc15'; c.lineWidth = 4; c.beginPath(); c.arc(0, -24, 14, Math.PI, 0); c.stroke();
+          c.fillStyle = '#ec4899'; roundRect(c, -26, -24, 52, 56, 8); c.fill();
+          c.restore();
+        }
+
+        c.restore();
+      }
       // Objeto `h` passado para todo `renderBody(ctx, t, duration, h)`
       const RENDER_HELPERS = {
         clamp,
@@ -4026,6 +4247,7 @@ function speakNarrationLine(line) {
         easeOutBack,
         easeOutQuad,
         easeInOutQuad,
+        drawCharacter,
         seededRandom,
         roundRect,
         drawShadow,
@@ -4557,8 +4779,7 @@ let grainPatternCanvas = null;
         c.textAlign = isTopLeft ? 'left' : 'center';
 
         const x = isTopLeft ? 54 : CANVAS_W / 2;
-        const y = isTopLeft ? 226 : (isCenter ? CANVAS_H / 2 : 1468);
-
+        const y = isTopLeft ? 132 : (isCenter ? CANVAS_H / 2 : (subtitleMode === 'bottom' ? 1420 : 1485));
         if (!isCenter) {
           const tw = c.measureText(label).width;
           const bx = isTopLeft ? x - 18 : x - tw / 2 - 20;
@@ -5815,6 +6036,9 @@ if (activeProject.narrationLines && activeProject.narrationLines.length && !cust
           '5. Atalhos de SFX opcionais se forem úteis: woodKnock, footstep, pop, whoosh, chime, whistle, bark, meow, boing, impact, crash, applause, sadTrombone, laser, splash, doorCreak, bell, alert.',
           '',
           'REGRAS VISUAIS 9:16 (1080x1920):',
+          '- PERSONAGENS DETALHADOS OBRIGATÓRIOS: SEMPRE use h.drawCharacter(ctx, x, yPésNoChão, { t, scale, facing, pose, mood, shirt, pants, skin, hairColor, hairStyle, prop, talking }) para desenhar pessoas! Poses: idle, walk, run, celebrate, paint, phone, shock, sit. Moods: happy, excited, neutral, confused, shocked, sad, angry. Props: none, money, card, phone, roller, bag. NUNCA desenhe bonecos sem olhos/rosto.',
+          '- ZONA PROIBIDA DE TEXTO/CENÁRIO: NÃO coloque textos soltos, placas ou relógios acima de Y=460 (essa área pertence às legendas e marca d\'água). Use NO MÁXIMO 1 placa/elemento textual por cena para não poluir.',
+          '- SINCRONIA PERFEITA DE NARRAÇÃO: calcule a duração de cada segmento pela fala (~2.4 palavras por segundo + 0.8s de respiro). Exemplo: frase de 12 palavras = segmento de 5.5s a 6.0s. NUNCA coloque frase longa em cena de 3s!',
           '- Soma das durações até 60s. renderBody 100% determinístico em `t` (zero imagens/URLs externas).',
           '- Helpers `h`: clamp, lerp, invLerp, smoothstep, easeInOutCubic, easeOutCubic, easeOutBack, easeOutQuad, roundRect, drawShadow, drawImpactRings, drawSubtitle(ctx, text, progress), setCameraLabel.',
           '- Ação principal entre Y=850 e Y=1450 (topo e base livres p/ legendas). Câmera virtual, paralaxe, sombras no chão e personagens articulados em movimento contínuo. Código compacto para não truncar o JSON.',
