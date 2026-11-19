@@ -2260,6 +2260,7 @@
       const CANVAS_H = 1920;
       const MAX_DURATION = 60.0;
       const TRANSITION_DUR = 0.35;
+      const OUTRO_FADE = 0.85;
       const STORAGE_KEY = 'cinecode_json_studio_library_v1';
 
       // =======================================================================
@@ -2786,6 +2787,7 @@ let audioCtx = null;
       let musicVolume = 0.55;
       let sfxVolume = 0.9;
       let isTtsDucking = false;
+      let outroAudioMul = 1.0;
 
       const activeAudioNodes = new Set();
       const activeAmbienceStops = new Map();
@@ -2816,13 +2818,13 @@ let audioCtx = null;
       const volSfxSlider = document.getElementById('volSfxSlider');
       const volSfxVal = document.getElementById('volSfxVal');
 
-      function applyMixerGains() {
+     function applyMixerGains() {
         if (!audioCtx) return;
         const now = audioCtx.currentTime;
         const duckFactor = isTtsDucking ? 0.38 : 1.0;
-        const ramp = isTtsDucking ? 0.06 : 0.22;
-        if (musicBus) musicBus.gain.setTargetAtTime(musicVolume * duckFactor, now, ramp);
-        if (sfxBus) sfxBus.gain.setTargetAtTime(sfxVolume, now, 0.03);
+        const ramp = isTtsDucking ? 0.06 : 0.18;
+        if (musicBus) musicBus.gain.setTargetAtTime(musicVolume * duckFactor * outroAudioMul, now, ramp);
+        if (sfxBus) sfxBus.gain.setTargetAtTime(sfxVolume * outroAudioMul, now, 0.05);
         if (voiceBus) voiceBus.gain.setTargetAtTime(voiceVolume, now, 0.03);
       }
 
@@ -2846,6 +2848,7 @@ let audioCtx = null;
       }
 
       function stopAllContinuousAudio(isLoopWrap = false) {
+        outroAudioMul = 1.0; applyMixerGains();
         activeAudioNodes.forEach((node) => {
           try { if (typeof node.stop === 'function') node.stop(); } catch (e) {}
           try { if (typeof node.disconnect === 'function') node.disconnect(); } catch (e) {}
@@ -3512,6 +3515,33 @@ function speakNarrationLine(line) {
           customVoiceNode = src;
         } catch (e) {}
       }
+      function adjustProjectDurationForVoice(voiceEndSec) {
+        if (!activeProject || !activeProject.segments || !activeProject.segments.length) return;
+        if (activeProject.baseTotalDuration === undefined) {
+          activeProject.baseTotalDuration = activeProject.totalDuration;
+          (activeProject.globalSubtitles || []).forEach((s) => { s._baseEnd = s.end; });
+        }
+        const baseDur = activeProject.baseTotalDuration;
+        const targetDur = clamp(Math.max(baseDur, (Number(voiceEndSec) || 0) + 0.9), baseDur, MAX_DURATION);
+        if (Math.abs(targetDur - activeProject.totalDuration) < 0.05) return;
+
+        activeProject.totalDuration = targetDur;
+        const lastSeg = activeProject.segments[activeProject.segments.length - 1];
+        lastSeg.end = targetDur;
+        lastSeg.duration = Math.max(0.5, targetDur - lastSeg.start);
+
+        if (activeProject.scenes && activeProject.scenes.length) {
+          activeProject.scenes[activeProject.scenes.length - 1].end = targetDur;
+        }
+        (activeProject.globalSubtitles || []).forEach((s) => {
+          if (s._baseEnd >= baseDur - 0.5) s.end = Math.max(s._baseEnd, targetDur - 0.3);
+        });
+
+        durationEngineBadge.textContent = `${targetDur.toFixed(1)}s · JSON Engine`;
+        scrubber.setAttribute('aria-valuemax', targetDur.toFixed(1));
+        buildTimelineMarkersAndScenes();
+        updatePlayerUI();
+      }
       async function generateServerlessVoiceTrack(silent = false) {
         if (!activeProject || !activeProject.narrationLines || activeProject.narrationLines.length === 0) {
           if (!silent) showToast('Este vídeo não possui falas em "narration".', 'amber');
@@ -3579,6 +3609,7 @@ function speakNarrationLine(line) {
 
           customVoiceBuffer = master;
           voiceDuckWindows = placed.map((p) => ({ start: p.start, end: p.end }));
+          adjustProjectDurationForVoice(cursorEnd);
           btnClearVoice.style.display = 'inline-flex';
           voiceTrackStatus.textContent = `Voz Neural pronta e sincronizada (${clips.length} falas) — sai no vídeo exportado!`;
           if (!silent) showToast('Narração neural pronta! Já vai embutida no vídeo exportado.');
@@ -3684,6 +3715,8 @@ function speakNarrationLine(line) {
           btnClearVoice.addEventListener('click', () => {
             stopAllContinuousAudio();
             customVoiceBuffer = null;
+            voiceDuckWindows = [];
+          adjustProjectDurationForVoice(0);
             btnClearVoice.style.display = 'none';
             voiceTrackStatus.textContent = 'TTS ao vivo ativo. Para embutir voz no arquivo exportado, grave no Mic ou suba um .mp3/.wav.';
             showToast('Faixa de voz removida.');
@@ -4991,6 +5024,14 @@ let grainPatternCanvas = null;
           renderDeclarativeSubtitles(t);
           renderPostFX(ctx, t);
 renderWatermark(ctx);
+          const remOutro = activeProject.totalDuration - t;
+          if (remOutro < OUTRO_FADE) {
+            const fp = clamp(1 - remOutro / OUTRO_FADE, 0, 1);
+            ctx.save();
+            ctx.fillStyle = `rgba(5, 7, 13, ${easeInCubic(fp).toFixed(3)})`;
+            ctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
+            ctx.restore();
+          }
         } catch (err) {
           showRuntimeError(err);
         }
@@ -5212,6 +5253,14 @@ renderWatermark(ctx);
 
         if (activeProject) {
           const dur = activeProject.totalDuration;
+          const remAudio = dur - currentTime;
+          const nextOutroMul = (isPlaying || isRecording) && remAudio < OUTRO_FADE
+            ? clamp(remAudio / OUTRO_FADE, 0, 1)
+            : 1.0;
+          if (Math.abs(nextOutroMul - outroAudioMul) > 0.02) {
+            outroAudioMul = nextOutroMul;
+            applyMixerGains();
+          }
 
           if (isRecording) {
             const now = performance.now();
@@ -5615,7 +5664,7 @@ renderWatermark(ctx);
 
           const qualityKey = exportQualitySelect.value in EXPORT_QUALITY_PRESETS ? exportQualitySelect.value : 'standard';
           const preset = EXPORT_QUALITY_PRESETS[qualityKey];
-          const targetDuration = activeProject.totalDuration;
+          let targetDuration = activeProject.totalDuration;
           const fileExt = wantMp4 ? 'mp4' : 'webm';
           const downloadName = `${slugify(activeProject.title)}-9x16.${fileExt}`;
 
@@ -5628,6 +5677,7 @@ renderWatermark(ctx);
 if (narrationEnabled && activeProject.narrationLines && activeProject.narrationLines.length && !customVoiceBuffer) {
   exportText.textContent = 'Gerando narração neural...';
   await generateServerlessVoiceTrack(true);
+  targetDuration = activeProject.totalDuration;
 }
           wasPlayingBeforeRecord = isPlaying;
           isPlaying = false;
@@ -5743,7 +5793,7 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
           } catch (err) {
             cleanupRecordingUI();
           }
-        }, 150);
+        }, 380);
       }
 
       function cleanupRecordingUI() {
