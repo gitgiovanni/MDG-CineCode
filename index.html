@@ -1984,6 +1984,7 @@
             <select class="voice-select" id="voiceSelect" aria-label="Voz do narrador">
               <option value="">Voz automática (pt-BR)</option>
             </select>
+            <button type="button" class="btn-voice-sm active" id="btnGenNeuralVoice" title="Sintetiza a narração neural PT-BR para tocar e sair no vídeo exportado">✦ Gerar Voz</button>
             <button type="button" class="btn-voice-sm" id="btnRecordVoice" title="Grava sua voz pelo microfone acompanhando o vídeo para sair no arquivo exportado">Gravar Mic</button>
             <button type="button" class="btn-voice-sm" id="btnUploadVoice" title="Importar narração .mp3/.wav para sair no vídeo exportado">Subir Voz</button>
             <input type="file" id="voiceFileInput" accept="audio/*" style="display:none;" />
@@ -2792,6 +2793,9 @@ let audioCtx = null;
       let selectedVoiceURI = '';
       let customVoiceBuffer = null;
       let customVoiceNode = null;
+      let voiceDuckWindows = [];
+      let selectedNeuralVoice = 'pt-BR-AntonioNeural';
+      const btnGenNeuralVoice = document.getElementById('btnGenNeuralVoice');
       let micRecorder = null;
       let micStream = null;
       let micChunks = [];
@@ -3475,9 +3479,12 @@ function speakNarrationLine(line) {
         if (!narrationEnabled || isMuted || customVoiceBuffer || isRecording || voiceVolume <= 0.01) return;
         if (!('speechSynthesis' in window) || !line || !line.text) return;
         try {
+          window.speechSynthesis.cancel();
+          const words = line.text.split(/\s+/).filter(Boolean).length;
+          const autoRate = line.maxDur ? clamp((words / 2.6) / Math.max(1.4, line.maxDur - 0.25), 0.92, 1.45) : 1.0;
           const utt = new SpeechSynthesisUtterance(line.text);
           utt.lang = line.lang || 'pt-BR';
-          utt.rate = clamp(Number(line.rate) || 1.0, 0.5, 1.8);
+          utt.rate = clamp(Math.max(Number(line.rate) || 1.0, autoRate), 0.65, 1.55);
           utt.pitch = clamp(Number(line.pitch) || 1.0, 0.4, 1.8);
           utt.volume = clamp(voiceVolume * (Number(line.volume) || 1.0), 0.0, 1.0);
           utt.onstart = () => setMusicDuck(true);
@@ -3487,9 +3494,7 @@ function speakNarrationLine(line) {
           utt.onend = releaseDuck;
           utt.onerror = releaseDuck;
           const voices = window.speechSynthesis.getVoices() || [];
-          let chosen = null;
-          if (selectedVoiceURI) chosen = voices.find((v) => v.voiceURI === selectedVoiceURI);
-          if (!chosen) chosen = voices.find((v) => /^pt(-BR)?/i.test(v.lang));
+          const chosen = voices.find((v) => /^pt(-BR)?/i.test(v.lang));
           if (chosen) utt.voice = chosen;
           window.speechSynthesis.speak(utt);
         } catch (e) {}
@@ -3507,21 +3512,105 @@ function speakNarrationLine(line) {
           customVoiceNode = src;
         } catch (e) {}
       }
+      async function generateServerlessVoiceTrack(silent = false) {
+        if (!activeProject || !activeProject.narrationLines || activeProject.narrationLines.length === 0) {
+          if (!silent) showToast('Este vídeo não possui falas em "narration".', 'amber');
+          return false;
+        }
+        if (location.protocol === 'file:') {
+          if (!silent) showToast('A voz neural funciona no site publicado na Vercel (não via file://).', 'amber');
+          return false;
+        }
+
+        await ensureAudioReady();
+        stopAllContinuousAudio();
+        if (btnGenNeuralVoice) { btnGenNeuralVoice.disabled = true; btnGenNeuralVoice.textContent = 'Gerando...'; }
+
+        try {
+          const lines = activeProject.narrationLines;
+          const clips = [];
+
+          for (let i = 0; i < lines.length; i++) {
+            const ln = lines[i];
+            voiceTrackStatus.textContent = `Sintetizando fala ${i + 1}/${lines.length}...`;
+
+            // Ajusta velocidade automaticamente para caber na cena sem atrasar a fila
+            const words = ln.text.split(/\s+/).filter(Boolean).length;
+            const avail = Math.max(1.5, (ln.maxDur || 4.0) - 0.25);
+            const estDur = words / 2.65;
+            const autoRateMult = estDur > avail ? clamp(estDur / avail, 1.0, 1.42) : 1.0;
+            const finalRate = Math.max(Number(ln.rate) || 1.0, autoRateMult);
+            const ratePct = Math.round((finalRate - 1.0) * 100);
+            const pitchHz = Math.round(((Number(ln.pitch) || 1.0) - 1.0) * 18);
+
+            const res = await fetch('/api/tts', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: ln.text, voice: selectedNeuralVoice, ratePct, pitchHz })
+            });
+            if (!res.ok) throw new Error(`HTTP ${res.status}`);
+            const ab = await res.arrayBuffer();
+            const buf = await audioCtx.decodeAudioData(ab);
+            clips.push({ start: ln.start, buffer: buf });
+          }
+
+          // Monta a faixa única sincronizada na timeline + janelas de auto-ducking
+          const sr = clips[0].buffer.sampleRate;
+          let maxEnd = activeProject.totalDuration;
+          let cursorEnd = 0;
+          const placed = clips.map((c) => {
+            const actualStart = Math.max(c.start, cursorEnd);
+            const actualEnd = actualStart + c.buffer.duration;
+            cursorEnd = actualEnd + 0.08;
+            maxEnd = Math.max(maxEnd, cursorEnd);
+            return { start: actualStart, end: actualEnd, buffer: c.buffer };
+          });
+
+          const totalFrames = Math.ceil(maxEnd * sr);
+          const master = audioCtx.createBuffer(1, totalFrames, sr);
+          const out = master.getChannelData(0);
+          placed.forEach((p) => {
+            const src = p.buffer.getChannelData(0);
+            const off = Math.floor(p.start * sr);
+            for (let k = 0; k < src.length && off + k < totalFrames; k++) {
+              out[off + k] = clamp(out[off + k] + src[k], -1, 1);
+            }
+          });
+
+          customVoiceBuffer = master;
+          voiceDuckWindows = placed.map((p) => ({ start: p.start, end: p.end }));
+          btnClearVoice.style.display = 'inline-flex';
+          voiceTrackStatus.textContent = `Voz Neural pronta e sincronizada (${clips.length} falas) — sai no vídeo exportado!`;
+          if (!silent) showToast('Narração neural pronta! Já vai embutida no vídeo exportado.');
+          return true;
+        } catch (err) {
+          voiceTrackStatus.textContent = 'Rota /api/tts indisponível — usando TTS do navegador no preview.';
+          if (!silent) showToast('Não foi possível acessar /api/tts. Verifique o deploy na Vercel.', 'error');
+          return false;
+        } finally {
+          if (btnGenNeuralVoice) { btnGenNeuralVoice.disabled = false; btnGenNeuralVoice.textContent = '✦ Gerar Voz'; }
+        }
+      }
 
       function populateVoiceList() {
-        if (!voiceSelect || !('speechSynthesis' in window)) return;
-        const voices = window.speechSynthesis.getVoices() || [];
-        const ptVoices = voices.filter((v) => /^pt/i.test(v.lang));
-        const list = ptVoices.length ? ptVoices : voices;
-        const prevVal = voiceSelect.value;
-        voiceSelect.innerHTML = '<option value="">Voz automática (pt-BR)</option>';
-        list.forEach((v) => {
+        if (!voiceSelect) return;
+        const NEURAL_VOICES = [
+          { id: 'pt-BR-AntonioNeural', label: 'Antônio (Neural · PT-BR)' },
+          { id: 'pt-BR-FranciscaNeural', label: 'Francisca (Neural · PT-BR)' },
+          { id: 'pt-BR-ThalitaMultilingualNeural', label: 'Thalita (Jovem · PT-BR)' },
+          { id: 'pt-BR-HumbertoNeural', label: 'Humberto (Grave · Suspense)' },
+          { id: 'pt-BR-FabioNeural', label: 'Fábio (Narrador · PT-BR)' },
+          { id: 'pt-BR-BrendaNeural', label: 'Brenda (Expressiva · PT-BR)' }
+        ];
+        try { selectedNeuralVoice = localStorage.getItem('cinecode_neural_voice_v1') || 'pt-BR-AntonioNeural'; } catch (e) {}
+        voiceSelect.innerHTML = '';
+        NEURAL_VOICES.forEach((v) => {
           const opt = document.createElement('option');
-          opt.value = v.voiceURI;
-          opt.textContent = `${v.name} (${v.lang})`;
+          opt.value = v.id;
+          opt.textContent = v.label;
           voiceSelect.appendChild(opt);
         });
-        if (prevVal) voiceSelect.value = prevVal;
+        voiceSelect.value = selectedNeuralVoice;
       }
 
       function initAudioVoiceControls() {
@@ -3552,7 +3641,7 @@ function speakNarrationLine(line) {
         if (volSfxSlider) volSfxSlider.addEventListener('input', () => { sfxVolume = Number(volSfxSlider.value) / 100; syncMixUI(); persistMix(); });
         if ('speechSynthesis' in window) {
           populateVoiceList();
-          window.speechSynthesis.onvoiceschanged = populateVoiceList;
+         
         }
         if (btnNarrationToggle) {
           btnNarrationToggle.addEventListener('click', () => {
@@ -3563,7 +3652,16 @@ function speakNarrationLine(line) {
           });
         }
         if (voiceSelect) {
-          voiceSelect.addEventListener('change', () => { selectedVoiceURI = voiceSelect.value; });
+          voiceSelect.addEventListener('change', () => {
+            selectedNeuralVoice = voiceSelect.value;
+            try { localStorage.setItem('cinecode_neural_voice_v1', selectedNeuralVoice); } catch (e) {}
+            customVoiceBuffer = null;
+            voiceDuckWindows = [];
+            if (btnClearVoice) btnClearVoice.style.display = 'none';
+          });
+        }
+        if (btnGenNeuralVoice) {
+          btnGenNeuralVoice.addEventListener('click', () => generateServerlessVoiceTrack(false));
         }
         if (btnUploadVoice && voiceFileInput) {
           btnUploadVoice.addEventListener('click', () => { voiceFileInput.value = ''; voiceFileInput.click(); });
@@ -3680,8 +3778,12 @@ function speakNarrationLine(line) {
         }
 
         // 4. Narrador TTS (preview) ou Faixa de Voz Exportável (Mic/MP3)
-        if (customVoiceBuffer) {
+if (customVoiceBuffer && narrationEnabled) {
           ensureCustomVoicePlaying(toTime);
+          if (voiceDuckWindows.length > 0) {
+            const inVoice = voiceDuckWindows.some((w) => toTime >= w.start && toTime <= w.end);
+            setMusicDuck(inVoice);
+          }
         } else {
           const lines = activeProject.narrationLines || [];
           for (let i = 0; i < lines.length; i++) {
@@ -3894,9 +3996,7 @@ function speakNarrationLine(line) {
 
           const lineWords = lines.map((ln) => ln.split(/\s+/).filter(Boolean));
           const totalWords = lineWords.reduce((sum, arr) => sum + arr.length, 0) || 1;
-        const readP = options.readProgress !== undefined
-            ? clamp(options.readProgress, 0, 1)
-            : clamp(currentSegProgress, 0, 1);
+const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0, 1) : clamp(currentSegProgress, 0, 1);
           const activeWordIdx = Math.min(totalWords - 1, Math.floor(readP * totalWords));
           const spaceW = c.measureText(' ').width;
 
@@ -4552,6 +4652,9 @@ function speakNarrationLine(line) {
         }
         compiledMusicNotes.sort((a, b) => a.time - b.time);
         narrationLines.sort((a, b) => a.start - b.start);
+        narrationLines.forEach((ln, i) => {
+  ln.maxDur = (i + 1 < narrationLines.length ? narrationLines[i + 1].start : cursor) - ln.start;
+});
 
         return {
           id,
@@ -4779,7 +4882,7 @@ let grainPatternCanvas = null;
         c.textAlign = isTopLeft ? 'left' : 'center';
 
         const x = isTopLeft ? 54 : CANVAS_W / 2;
-        const y = isTopLeft ? 132 : (isCenter ? CANVAS_H / 2 : (subtitleMode === 'bottom' ? 1420 : 1485));
+       const y = isTopLeft ? 132 : (isCenter ? CANVAS_H / 2 : (subtitleMode === 'bottom' ? 1420 : 1485));
         if (!isCenter) {
           const tw = c.measureText(label).width;
           const bx = isTopLeft ? x - 18 : x - tw / 2 - 20;
@@ -4947,6 +5050,7 @@ renderWatermark(ctx);
             await ensureAudioReady();
             hideStartOverlay();
             stopAllContinuousAudio();
+
             currentTime = clamp(sc.start, 0, dur);
             prevTime = currentTime - 0.001;
             renderFrame(currentTime);
@@ -4973,6 +5077,9 @@ renderWatermark(ctx);
 
         clearRuntimeError();
         stopAllContinuousAudio();
+        customVoiceBuffer = null;
+        voiceDuckWindows = [];
+        if (btnClearVoice) btnClearVoice.style.display = 'none';
         activeProject = compiled;
         currentTime = clamp(seekTo, 0, compiled.totalDuration);
         prevTime = currentTime - 0.001;
@@ -5518,7 +5625,10 @@ renderWatermark(ctx);
           }
           hideStartOverlay();
           stopAllContinuousAudio();
-
+if (narrationEnabled && activeProject.narrationLines && activeProject.narrationLines.length && !customVoiceBuffer) {
+  exportText.textContent = 'Gerando narração neural...';
+  await generateServerlessVoiceTrack(true);
+}
           wasPlayingBeforeRecord = isPlaying;
           isPlaying = false;
           currentTime = 0;
@@ -5600,7 +5710,7 @@ renderWatermark(ctx);
               cleanupRecordingUI();
             }
           };
-if (activeProject.narrationLines && activeProject.narrationLines.length && !customVoiceBuffer) showToast('Exportando com música/SFX. Para incluir narração no arquivo, grave no Mic ou suba um .mp3.', 'amber');
+
           // Timeslice de 100ms garante gravação estável até 60 segundos
           isRecording = true;
           isPlaying = true;
