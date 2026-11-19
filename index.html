@@ -1686,6 +1686,66 @@
       justify-content: space-between;
       gap: 8px;
     }
+    .mixer-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 10px;
+      padding-top: 7px;
+      border-top: 1px solid rgba(255, 255, 255, 0.08);
+    }
+    .mixer-channel {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+    .mixer-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      font-size: 0.67rem;
+      font-weight: 600;
+      color: var(--text-secondary);
+      white-space: nowrap;
+    }
+    .mixer-val {
+      font-family: var(--font-mono);
+      font-size: 0.65rem;
+      color: #c4b5fd;
+    }
+    .mixer-slider {
+      width: 100%;
+      height: 5px;
+      accent-color: var(--accent-violet);
+      cursor: pointer;
+    }
+    .fx-bar {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+      padding: 10px 12px;
+      border-radius: var(--radius-lg);
+      background: rgba(6, 182, 212, 0.06);
+      border: 1px solid rgba(6, 182, 212, 0.24);
+    }
+    .fx-row {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+    .fx-input {
+      width: 100%;
+      min-height: 36px;
+      padding: 0 10px;
+      border-radius: var(--radius-sm);
+      border: 1px solid var(--border-subtle);
+      background-color: var(--bg-elevated);
+      color: var(--text-primary);
+      font-family: var(--font-mono);
+      font-size: 0.76rem;
+      outline: none;
+    }
+    .fx-input:focus { border-color: var(--accent-cyan); }
   </style>
 </head>
 
@@ -1929,8 +1989,61 @@
             <input type="file" id="voiceFileInput" accept="audio/*" style="display:none;" />
             <button type="button" class="btn-voice-sm" id="btnClearVoice" style="display:none;" title="Remover faixa de voz">× Limpar</button>
           </div>
+          <div class="mixer-grid">
+            <label class="mixer-channel">
+              <span class="mixer-head"><span>Voz / Narrador</span><span class="mixer-val" id="volVoiceVal">120%</span></span>
+              <input type="range" class="mixer-slider" id="volVoiceSlider" min="0" max="200" step="5" value="120" />
+            </label>
+            <label class="mixer-channel">
+              <span class="mixer-head"><span>Música / Amb.</span><span class="mixer-val" id="volMusicVal">55%</span></span>
+              <input type="range" class="mixer-slider" id="volMusicSlider" min="0" max="150" step="5" value="55" />
+            </label>
+            <label class="mixer-channel">
+              <span class="mixer-head"><span>Efeitos (SFX)</span><span class="mixer-val" id="volSfxVal">90%</span></span>
+              <input type="range" class="mixer-slider" id="volSfxSlider" min="0" max="150" step="5" value="90" />
+            </label>
+          </div>
           <div class="voice-status-line">
             <span id="voiceTrackStatus">TTS ao vivo ativo. Para embutir voz no arquivo exportado, grave no Mic ou suba um .mp3/.wav.</span>
+          </div>
+        </div>
+
+        <!-- Estilos de Legenda, Filtros de Cinema e Marca d'água -->
+        <div class="fx-bar">
+          <div class="fx-row">
+            <label class="export-field">
+              <span class="export-label">Estilo da Legenda</span>
+              <select class="export-select" id="subtitleStyleSelect">
+                <option value="pill" selected>Clássica (Pill)</option>
+                <option value="karaoke">Karaokê (Reels)</option>
+                <option value="cinema">Terror / Cinema</option>
+                <option value="pop">Pop Impacto</option>
+              </select>
+            </label>
+            <label class="export-field">
+              <span class="export-label">Filtro Visual</span>
+              <select class="export-select" id="postFilterSelect">
+                <option value="none" selected>Sem Filtro</option>
+                <option value="cinema">Cinema (Vinheta + Grão)</option>
+                <option value="vhs">VHS Retrô</option>
+                <option value="noir">Sombrio / Noir</option>
+              </select>
+            </label>
+          </div>
+          <div class="fx-row">
+            <label class="export-field">
+              <span class="export-label">Marca d'água (@)</span>
+              <input type="text" class="fx-input" id="watermarkInput" value="@mdg_gta_cortes" maxlength="36" placeholder="@seu_perfil" />
+            </label>
+            <label class="export-field">
+              <span class="export-label">Posição da Marca</span>
+              <select class="export-select" id="watermarkPosSelect">
+                <option value="bottom-safe" selected>Base Segura (Reels)</option>
+                <option value="top-left">Topo Esquerdo</option>
+                <option value="center-mid">Centro (Anti-cópia)</option>
+                <option value="hidden">Oculta</option>
+              </select>
+            </label>
           </div>
         </div>
         <!-- Seção de Exportação: Formato, Qualidade/Peso e Download -->
@@ -2606,6 +2719,11 @@
       let isMuted = false;
       let showGuides = false;
       let subtitleMode = 'top';
+      let subtitleStyle = 'pill';
+      let postFilter = 'none';
+      let watermarkText = '@mdg_gta_cortes';
+      let watermarkPos = 'bottom-safe';
+      let currentSegProgress = 0;
       let dynamicCameraLabel = null;
       let lastRuntimeErrorMsg = null;
       let scenePillElements = [];
@@ -2643,11 +2761,17 @@
       // =======================================================================
       // 5. MOTOR DE ÁUDIO LIVRE v2 (REVERB + MÚSICA + AMBIÊNCIA + SFX + VOZ)
       // =======================================================================
-      let audioCtx = null;
+let audioCtx = null;
       let synthBus = null;
+      let musicBus = null;
+      let sfxBus = null;
       let voiceBus = null;
       let reverbNode = null;
       let reverbReturn = null;
+      let musicReverb = null;
+      let musicReverbReturn = null;
+      let sfxReverb = null;
+      let sfxReverbReturn = null;
       let speakerGain = null;
       let recordDest = null;
       let noiseBuffer = null;
@@ -2655,7 +2779,12 @@
       let keepAliveOsc = null;
       let keepAliveGain = null;
 
-      // Controle de nós contínuos, ambiências e narrador
+      // Controle de mixer, nós contínuos, ambiências e narrador
+      let voiceVolume = 1.2;
+      let musicVolume = 0.55;
+      let sfxVolume = 0.9;
+      let isTtsDucking = false;
+
       const activeAudioNodes = new Set();
       const activeAmbienceStops = new Map();
       let narrationEnabled = true;
@@ -2675,6 +2804,28 @@
       const voiceFileInput = document.getElementById('voiceFileInput');
       const btnClearVoice = document.getElementById('btnClearVoice');
       const voiceTrackStatus = document.getElementById('voiceTrackStatus');
+      const volVoiceSlider = document.getElementById('volVoiceSlider');
+      const volVoiceVal = document.getElementById('volVoiceVal');
+      const volMusicSlider = document.getElementById('volMusicSlider');
+      const volMusicVal = document.getElementById('volMusicVal');
+      const volSfxSlider = document.getElementById('volSfxSlider');
+      const volSfxVal = document.getElementById('volSfxVal');
+
+      function applyMixerGains() {
+        if (!audioCtx) return;
+        const now = audioCtx.currentTime;
+        const duckFactor = isTtsDucking ? 0.38 : 1.0;
+        const ramp = isTtsDucking ? 0.06 : 0.22;
+        if (musicBus) musicBus.gain.setTargetAtTime(musicVolume * duckFactor, now, ramp);
+        if (sfxBus) sfxBus.gain.setTargetAtTime(sfxVolume, now, 0.03);
+        if (voiceBus) voiceBus.gain.setTargetAtTime(voiceVolume, now, 0.03);
+      }
+
+      function setMusicDuck(active) {
+        if (isTtsDucking === active) return;
+        isTtsDucking = active;
+        applyMixerGains();
+      }
 
       function trackNode(node) {
         if (!node) return node;
@@ -2706,8 +2857,11 @@
           customVoiceNode = null;
         }
 
-        if (!isLoopWrap && typeof window !== 'undefined' && 'speechSynthesis' in window) {
-          try { window.speechSynthesis.cancel(); } catch (e) {}
+        if (!isLoopWrap) {
+          setMusicDuck(false);
+          if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+            try { window.speechSynthesis.cancel(); } catch (e) {}
+          }
         }
       }
 
@@ -2751,31 +2905,46 @@
             compressor.attack.setValueAtTime(0.002, audioCtx.currentTime);
             compressor.release.setValueAtTime(0.14, audioCtx.currentTime);
 
-            synthBus = audioCtx.createGain();
-            synthBus.gain.setValueAtTime(1.0, audioCtx.currentTime);
+            musicBus = audioCtx.createGain();
+            musicBus.gain.setValueAtTime(musicVolume, audioCtx.currentTime);
+
+            sfxBus = audioCtx.createGain();
+            sfxBus.gain.setValueAtTime(sfxVolume, audioCtx.currentTime);
+            synthBus = sfxBus;
 
             voiceBus = audioCtx.createGain();
-            voiceBus.gain.setValueAtTime(1.1, audioCtx.currentTime);
+            voiceBus.gain.setValueAtTime(voiceVolume, audioCtx.currentTime);
 
-            reverbNode = audioCtx.createConvolver();
-            reverbNode.buffer = createImpulseResponse(audioCtx, 2.2, 2.7);
-            reverbReturn = audioCtx.createGain();
-            reverbReturn.gain.setValueAtTime(0.55, audioCtx.currentTime);
-            reverbNode.connect(reverbReturn);
-            reverbReturn.connect(synthBus);
+            const irBuf = createImpulseResponse(audioCtx, 2.2, 2.7);
+            musicReverb = audioCtx.createConvolver();
+            musicReverb.buffer = irBuf;
+            musicReverbReturn = audioCtx.createGain();
+            musicReverbReturn.gain.setValueAtTime(0.55, audioCtx.currentTime);
+            musicReverb.connect(musicReverbReturn);
+            musicReverbReturn.connect(musicBus);
+
+            sfxReverb = audioCtx.createConvolver();
+            sfxReverb.buffer = irBuf;
+            sfxReverbReturn = audioCtx.createGain();
+            sfxReverbReturn.gain.setValueAtTime(0.55, audioCtx.currentTime);
+            sfxReverb.connect(sfxReverbReturn);
+            sfxReverbReturn.connect(sfxBus);
+            reverbNode = sfxReverb;
+            reverbReturn = sfxReverbReturn;
 
             speakerGain = audioCtx.createGain();
             speakerGain.gain.setValueAtTime(isMuted ? 0 : 1.0, audioCtx.currentTime);
 
             recordDest = audioCtx.createMediaStreamDestination();
 
-            synthBus.connect(compressor);
+            musicBus.connect(compressor);
+            sfxBus.connect(compressor);
             voiceBus.connect(compressor);
             compressor.connect(speakerGain);
             speakerGain.connect(audioCtx.destination);
             compressor.connect(recordDest);
 
-            // Ruído branco (2s) e ruído rosa (2s — muito mais natural p/ chuva, vento e trovão)
+            // Ruído branco (2s) e ruído rosa (2s)
             const sr = audioCtx.sampleRate;
             const len = Math.floor(sr * 2.0);
             noiseBuffer = audioCtx.createBuffer(1, len, sr);
@@ -2831,11 +3000,11 @@
       }
 
       // Toolkit livre `a` passado para customCode de SFX e Ambiências
-      function createAudioToolkit(ac, dest) {
+      function createAudioToolkit(ac, dest, revTarget = sfxReverb) {
         return {
           noise: noiseBuffer,
           pinkNoise: pinkNoiseBuffer,
-          reverb: reverbNode,
+          reverb: revTarget,
           note: noteToFreq,
           track: trackNode,
           osc(opts = {}) {
@@ -2867,11 +3036,11 @@
             }
             out.connect(g);
             g.connect(dest);
-            if (opts.reverb && reverbNode) {
+            if (opts.reverb && revTarget) {
               const rv = ac.createGain();
               rv.gain.setValueAtTime(clamp(opts.reverb, 0, 1.2), now);
               g.connect(rv);
-              rv.connect(reverbNode);
+              rv.connect(revTarget);
             }
             o.start(now);
             o.stop(now + dur + 0.04);
@@ -2897,11 +3066,11 @@
             g.gain.linearRampToValueAtTime(peak, now + atk);
             g.gain.exponentialRampToValueAtTime(0.0001, now + dur);
             src.connect(f); f.connect(g); g.connect(dest);
-            if (opts.reverb && reverbNode) {
+            if (opts.reverb && revTarget) {
               const rv = ac.createGain();
               rv.gain.setValueAtTime(clamp(opts.reverb, 0, 1.2), now);
               g.connect(rv);
-              rv.connect(reverbNode);
+              rv.connect(revTarget);
             }
             src.start(now);
             src.stop(now + dur + 0.05);
@@ -2924,11 +3093,11 @@
         const outGain = ac.createGain();
         outGain.gain.setValueAtTime(1.0, now);
         outGain.connect(dest);
-        if (revAmt > 0.01 && reverbNode) {
+        if (revAmt > 0.01 && musicReverb) {
           const rSend = ac.createGain();
           rSend.gain.setValueAtTime(revAmt, now);
           outGain.connect(rSend);
-          rSend.connect(reverbNode);
+          rSend.connect(musicReverb);
         }
 
         if (inst === 'kick') {
@@ -3058,7 +3227,7 @@
 
         if (amb.customFn) {
           try {
-            const toolkit = createAudioToolkit(ac, env);
+            const toolkit = createAudioToolkit(ac, env, musicReverb);
             amb.customFn(ac, env, remDur, vol, toolkit);
           } catch (e) {}
         } else {
@@ -3128,7 +3297,7 @@
               lfo.start(now); lfo.stop(now + remDur + 0.08);
             }
             lp.connect(g); g.connect(env);
-            if (reverbNode) g.connect(reverbNode);
+            if (musicReverb) g.connect(musicReverb);
             freqs.forEach((f) => {
               const o = reg(ac.createOscillator());
               o.type = 'sawtooth'; o.frequency.setValueAtTime(f, now);
@@ -3148,7 +3317,7 @@
             bp.type = 'bandpass'; bp.frequency.setValueAtTime(950, now); bp.Q.setValueAtTime(2.0, now);
             g.gain.setValueAtTime(0.28, now);
             o.connect(bp); bp.connect(g); g.connect(env);
-            if (reverbNode) g.connect(reverbNode);
+            if (musicReverb) g.connect(musicReverb);
             o.start(now); lfo.start(now);
             o.stop(now + remDur + 0.08); lfo.stop(now + remDur + 0.08);
           } else if (type === 'heartbeat') {
@@ -3301,15 +3470,21 @@
       // =======================================================================
       // 5D. NARRADOR (WEB SPEECH API LIVE + FAIXA DE VOZ EXPORTÁVEL MIC/MP3)
       // =======================================================================
-      function speakNarrationLine(line) {
-        if (!narrationEnabled || isMuted || customVoiceBuffer || isRecording) return;
+function speakNarrationLine(line) {
+        if (!narrationEnabled || isMuted || customVoiceBuffer || isRecording || voiceVolume <= 0.01) return;
         if (!('speechSynthesis' in window) || !line || !line.text) return;
         try {
           const utt = new SpeechSynthesisUtterance(line.text);
           utt.lang = line.lang || 'pt-BR';
           utt.rate = clamp(Number(line.rate) || 1.0, 0.5, 1.8);
           utt.pitch = clamp(Number(line.pitch) || 1.0, 0.4, 1.8);
-          utt.volume = clamp(Number(line.volume) || 1.0, 0.1, 1.0);
+          utt.volume = clamp(voiceVolume * (Number(line.volume) || 1.0), 0.0, 1.0);
+          utt.onstart = () => setMusicDuck(true);
+          const releaseDuck = () => setTimeout(() => {
+            if (!window.speechSynthesis.speaking) setMusicDuck(false);
+          }, 140);
+          utt.onend = releaseDuck;
+          utt.onerror = releaseDuck;
           const voices = window.speechSynthesis.getVoices() || [];
           let chosen = null;
           if (selectedVoiceURI) chosen = voices.find((v) => v.voiceURI === selectedVoiceURI);
@@ -3349,6 +3524,31 @@
       }
 
       function initAudioVoiceControls() {
+        const MIXER_KEY = 'cinecode_mixer_v1';
+        try {
+          const savedMix = JSON.parse(localStorage.getItem(MIXER_KEY) || 'null');
+          if (savedMix) {
+            if (Number.isFinite(savedMix.voice)) voiceVolume = clamp(savedMix.voice, 0, 2);
+            if (Number.isFinite(savedMix.music)) musicVolume = clamp(savedMix.music, 0, 1.5);
+            if (Number.isFinite(savedMix.sfx)) sfxVolume = clamp(savedMix.sfx, 0, 1.5);
+          }
+        } catch (e) {}
+        const syncMixUI = () => {
+          if (volVoiceSlider) volVoiceSlider.value = String(Math.round(voiceVolume * 100));
+          if (volVoiceVal) volVoiceVal.textContent = `${Math.round(voiceVolume * 100)}%`;
+          if (volMusicSlider) volMusicSlider.value = String(Math.round(musicVolume * 100));
+          if (volMusicVal) volMusicVal.textContent = `${Math.round(musicVolume * 100)}%`;
+          if (volSfxSlider) volSfxSlider.value = String(Math.round(sfxVolume * 100));
+          if (volSfxVal) volSfxVal.textContent = `${Math.round(sfxVolume * 100)}%`;
+          applyMixerGains();
+        };
+        const persistMix = () => {
+          try { localStorage.setItem(MIXER_KEY, JSON.stringify({ voice: voiceVolume, music: musicVolume, sfx: sfxVolume })); } catch (e) {}
+        };
+        syncMixUI();
+        if (volVoiceSlider) volVoiceSlider.addEventListener('input', () => { voiceVolume = Number(volVoiceSlider.value) / 100; syncMixUI(); persistMix(); });
+        if (volMusicSlider) volMusicSlider.addEventListener('input', () => { musicVolume = Number(volMusicSlider.value) / 100; syncMixUI(); persistMix(); });
+        if (volSfxSlider) volSfxSlider.addEventListener('input', () => { sfxVolume = Number(volSfxSlider.value) / 100; syncMixUI(); persistMix(); });
         if ('speechSynthesis' in window) {
           populateVoiceList();
           window.speechSynthesis.onvoiceschanged = populateVoiceList;
@@ -3454,7 +3654,7 @@
           for (let i = 0; i < notes.length; i++) {
             const n = notes[i];
             if (fromTime < n.time && toTime >= n.time) {
-              playMusicNote(audioCtx, synthBus, n);
+              playMusicNote(audioCtx, musicBus, n)
             }
           }
         }
@@ -3468,7 +3668,7 @@
             const inside = toTime >= amb.start && toTime < amb.end - 0.05;
             if (inside && !activeAmbienceStops.has(key)) {
               const rem = Math.max(0.1, amb.end - toTime);
-              const stopFn = spawnAmbience(audioCtx, synthBus, amb, rem);
+              const stopFn = spawnAmbience(audioCtx, musicBus, amb, rem)
               activeAmbienceStops.set(key, stopFn);
             } else if (!inside && activeAmbienceStops.has(key)) {
               const stopFn = activeAmbienceStops.get(key);
@@ -3658,34 +3858,132 @@
        *  - Word-wrap automático (até 3 linhas) + auto-shrink da fonte
        *  - Pill compacto ajustado ao texto real + contorno escuro grosso + pop-in easeOutBack
        */
-      function drawSubtitle(c, text, progress = 1.0, options = {}) {
+    function drawSubtitle(c, text, progress = 1.0, options = {}) {
         if (subtitleMode === 'hidden' || !text) return;
 
         const maxBoxWidth = 860;
         const padX = 36;
         const padY = 20;
         const maxTextWidth = maxBoxWidth - padX * 2;
-        const startSize = options.fontSize || 74;
-        const color = options.color || '#ffffff';
-        const accentColor = options.accentColor || 'rgba(251, 191, 36, 0.65)';
         const alpha = options.alpha !== undefined ? clamp(options.alpha, 0, 1) : 1.0;
-
         if (alpha <= 0.01) return;
 
+        const style = options.style || subtitleStyle || 'pill';
+        const displayText = style === 'pop' ? String(text).toUpperCase() : String(text);
+        const startSize = options.fontSize || (style === 'cinema' ? 62 : style === 'pop' ? 78 : 74);
         const yPos = subtitleMode === 'bottom' ? 1600 : 300;
         const popScale = progress < 1 ? lerp(0.76, 1.0, easeOutBack(clamp(progress, 0, 1))) : 1.0;
 
         c.save();
         c.globalAlpha = alpha;
         c.translate(CANVAS_W / 2, yPos);
+        if (style === 'pop') c.rotate(-0.025);
         c.scale(popScale, popScale);
 
-        const { fontSize, lines, maxLineW } = layoutSubtitleText(c, text, startSize, maxTextWidth);
-        const lineHeight = fontSize * 1.18;
+        const { fontSize, lines, maxLineW } = layoutSubtitleText(c, displayText, startSize, maxTextWidth);
+        const lineHeight = fontSize * (style === 'cinema' ? 1.24 : 1.18);
+        const totalTextH = (lines.length - 1) * lineHeight;
+
+        if (style === 'karaoke') {
+          c.font = `900 ${fontSize}px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+          c.textAlign = 'center';
+          c.textBaseline = 'middle';
+          c.lineJoin = 'round';
+          c.lineWidth = Math.max(10, Math.round(fontSize * 0.18));
+
+          const lineWords = lines.map((ln) => ln.split(/\s+/).filter(Boolean));
+          const totalWords = lineWords.reduce((sum, arr) => sum + arr.length, 0) || 1;
+          const readP = options.readProgress !== undefined
+            ? clamp(options.readProgress, 0, 1)
+            : (progress < 0.995 ? clamp(progress, 0, 1) : clamp(currentSegProgress, 0, 1));
+          const activeWordIdx = Math.min(totalWords - 1, Math.floor(readP * totalWords));
+          const spaceW = c.measureText(' ').width;
+
+          let globalIdx = 0;
+          for (let i = 0; i < lineWords.length; i++) {
+            const words = lineWords[i];
+            const widths = words.map((w) => c.measureText(w).width);
+            const totalW = widths.reduce((a, b) => a + b, 0) + spaceW * Math.max(0, words.length - 1);
+            const ly = -totalTextH / 2 + i * lineHeight;
+            let cursorX = -totalW / 2;
+
+            for (let j = 0; j < words.length; j++) {
+              const w = words[j];
+              const ww = widths[j];
+              const cx = cursorX + ww / 2;
+              const isActive = globalIdx === activeWordIdx;
+              const isSpoken = globalIdx < activeWordIdx;
+
+              c.save();
+              c.translate(cx, ly);
+              if (isActive) {
+                c.scale(1.1, 1.1);
+                c.fillStyle = 'rgba(124, 58, 237, 0.88)';
+                roundRect(c, -ww / 2 - 14, -fontSize * 0.62, ww + 28, fontSize * 1.24, 18);
+                c.fill();
+              }
+              c.strokeStyle = 'rgba(0, 0, 0, 0.88)';
+              c.strokeText(w, 0, 2);
+              c.fillStyle = isActive ? '#fde047' : (isSpoken ? '#ffffff' : 'rgba(255, 255, 255, 0.68)');
+              c.fillText(w, 0, 2);
+              c.restore();
+
+              cursorX += ww + spaceW;
+              globalIdx++;
+            }
+          }
+          c.restore();
+          return;
+        }
+
+        if (style === 'cinema') {
+          const boxW = Math.min(maxBoxWidth + 60, maxLineW + 120);
+          const boxH = lines.length * lineHeight + 52;
+          const grad = c.createRadialGradient(0, 0, 20, 0, 0, boxW * 0.62);
+          grad.addColorStop(0, 'rgba(0, 0, 0, 0.62)');
+          grad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+          c.fillStyle = grad;
+          c.fillRect(-boxW / 2, -boxH / 2, boxW, boxH);
+
+          c.font = `600 ${fontSize}px Georgia, "Times New Roman", serif`;
+          c.textAlign = 'center';
+          c.textBaseline = 'middle';
+          c.shadowColor = 'rgba(0, 0, 0, 0.92)';
+          c.shadowBlur = 18;
+          c.shadowOffsetY = 4;
+          c.fillStyle = '#f1f5f9';
+          for (let i = 0; i < lines.length; i++) {
+            const ly = -totalTextH / 2 + i * lineHeight;
+            c.fillText(lines[i], 0, ly);
+          }
+          c.restore();
+          return;
+        }
+
+        if (style === 'pop') {
+          c.font = `900 ${fontSize}px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+          c.textAlign = 'center';
+          c.textBaseline = 'middle';
+          c.lineJoin = 'round';
+          c.lineWidth = Math.max(12, Math.round(fontSize * 0.2));
+          for (let i = 0; i < lines.length; i++) {
+            const ly = -totalTextH / 2 + i * lineHeight;
+            c.fillStyle = 'rgba(0, 0, 0, 0.85)';
+            c.fillText(lines[i], 7, ly + 9);
+            c.strokeStyle = '#090b12';
+            c.strokeText(lines[i], 0, ly);
+            c.fillStyle = '#fde047';
+            c.fillText(lines[i], 0, ly);
+          }
+          c.restore();
+          return;
+        }
+
+        // Clássica (Pill)
+        const color = options.color || '#ffffff';
+        const accentColor = options.accentColor || 'rgba(251, 191, 36, 0.65)';
         const boxW = Math.min(maxBoxWidth, maxLineW + padX * 2);
         const boxH = lines.length * lineHeight + padY * 2;
-
-        // Fundo pill semitransparente ajustado ao tamanho real do texto
         if (options.pill !== false) {
           c.save();
           c.shadowColor = 'rgba(0, 0, 0, 0.48)';
@@ -3701,23 +3999,18 @@
           roundRect(c, -boxW / 2, -boxH / 2, boxW, boxH, 28);
           c.stroke();
         }
-
-        // Texto centralizado com contorno escuro espesso
         c.font = `900 ${fontSize}px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
         c.textAlign = 'center';
         c.textBaseline = 'middle';
         c.lineJoin = 'round';
         c.lineWidth = Math.max(8, Math.round(fontSize * 0.15));
         c.strokeStyle = 'rgba(0, 0, 0, 0.78)';
-
-        const totalTextH = (lines.length - 1) * lineHeight;
         for (let i = 0; i < lines.length; i++) {
           const ly = -totalTextH / 2 + i * lineHeight + 2;
           c.strokeText(lines[i], 0, ly);
           c.fillStyle = color;
           c.fillText(lines[i], 0, ly);
         }
-
         c.restore();
       }
 
@@ -3745,7 +4038,6 @@
         },
         sfx: SFX_LIB
       };
-
       // =======================================================================
       // 7. PARSER, VALIDADOR E COMPILADOR DO SCHEMA JSON (FORMATO A & B)
       // =======================================================================
@@ -4170,20 +4462,165 @@
             const remaining = sub.end - t;
             const popProg = clamp(elapsed / 0.22, 0, 1);
             const fadeOut = remaining < 0.16 ? clamp(remaining / 0.16, 0, 1) : 1.0;
-            const opts = Object.assign({}, sub.options || {}, {
-              alpha: (sub.options && sub.options.alpha !== undefined ? sub.options.alpha : 1) * fadeOut
-            });
+           const opts = Object.assign({}, sub.options || {}, {
+  alpha: (sub.options && sub.options.alpha !== undefined ? sub.options.alpha : 1) * fadeOut,
+  readProgress: clamp(elapsed / Math.max(0.1, sub.end - sub.start), 0, 1)
+});
             drawSubtitle(ctx, sub.text, popProg, opts);
           }
         }
       }
+let grainPatternCanvas = null;
+      function getGrainCanvas() {
+        if (grainPatternCanvas) return grainPatternCanvas;
+        const gc = document.createElement('canvas');
+        gc.width = 256;
+        gc.height = 256;
+        const gctx = gc.getContext('2d');
+        const img = gctx.createImageData(256, 256);
+        const d = img.data;
+        for (let i = 0; i < d.length; i += 4) {
+          const v = (Math.random() * 255) | 0;
+          d[i] = v; d[i + 1] = v; d[i + 2] = v;
+          d[i + 3] = (Math.random() * 44) | 0;
+        }
+        gctx.putImageData(img, 0, 0);
+        grainPatternCanvas = gc;
+        return gc;
+      }
 
+      function drawFilmGrain(c, t, alpha) {
+        const gc = getGrainCanvas();
+        const frame = Math.floor(t * 24);
+        const ox = -Math.floor(seededRandom(frame * 1.7 + 3) * 256);
+        const oy = -Math.floor(seededRandom(frame * 3.1 + 11) * 256);
+        c.save();
+        c.globalAlpha = alpha;
+        for (let x = ox; x < CANVAS_W; x += 256) {
+          for (let y = oy; y < CANVAS_H; y += 256) {
+            c.drawImage(gc, x, y);
+          }
+        }
+        c.restore();
+      }
+
+      function renderPostFX(c, t) {
+        if (!postFilter || postFilter === 'none') return;
+        c.save();
+        if (postFilter === 'cinema' || postFilter === 'noir') {
+          const isNoir = postFilter === 'noir';
+          if (isNoir) {
+            c.fillStyle = 'rgba(8, 16, 34, 0.22)';
+            c.fillRect(0, 0, CANVAS_W, CANVAS_H);
+          }
+          const vig = c.createRadialGradient(CANVAS_W / 2, CANVAS_H / 2, 380, CANVAS_W / 2, CANVAS_H / 2, 1220);
+          vig.addColorStop(0, 'rgba(0,0,0,0)');
+          vig.addColorStop(1, isNoir ? 'rgba(0,0,0,0.78)' : 'rgba(0,0,0,0.58)');
+          c.fillStyle = vig;
+          c.fillRect(0, 0, CANVAS_W, CANVAS_H);
+          drawFilmGrain(c, t, isNoir ? 0.34 : 0.28);
+        } else if (postFilter === 'vhs') {
+          c.fillStyle = 'rgba(0, 0, 0, 0.16)';
+          for (let y = 0; y < CANVAS_H; y += 6) {
+            c.fillRect(0, y, CANVAS_W, 2);
+          }
+          const barY = ((t * 160) % (CANVAS_H + 180)) - 90;
+          const barG = c.createLinearGradient(0, barY - 36, 0, barY + 36);
+          barG.addColorStop(0, 'rgba(255,255,255,0)');
+          barG.addColorStop(0.5, 'rgba(186,230,253,0.14)');
+          barG.addColorStop(1, 'rgba(255,255,255,0)');
+          c.fillStyle = barG;
+          c.fillRect(0, barY - 36, CANVAS_W, 72);
+          c.fillStyle = 'rgba(236, 72, 153, 0.12)';
+          c.fillRect(0, 0, 6, CANVAS_H);
+          c.fillStyle = 'rgba(6, 182, 212, 0.12)';
+          c.fillRect(CANVAS_W - 6, 0, 6, CANVAS_H);
+          const vig = c.createRadialGradient(CANVAS_W / 2, CANVAS_H / 2, 420, CANVAS_W / 2, CANVAS_H / 2, 1220);
+          vig.addColorStop(0, 'rgba(0,0,0,0)');
+          vig.addColorStop(1, 'rgba(12,6,20,0.52)');
+          c.fillStyle = vig;
+          c.fillRect(0, 0, CANVAS_W, CANVAS_H);
+          drawFilmGrain(c, t, 0.44);
+        }
+        c.restore();
+      }
+
+      function renderWatermark(c) {
+        const label = String(watermarkText || '').trim();
+        if (!label || watermarkPos === 'hidden') return;
+        c.save();
+        const isCenter = watermarkPos === 'center-mid';
+        const isTopLeft = watermarkPos === 'top-left';
+        const fontSize = isCenter ? 46 : 32;
+        c.font = `800 ${fontSize}px "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif`;
+        c.textBaseline = 'middle';
+        c.textAlign = isTopLeft ? 'left' : 'center';
+
+        const x = isTopLeft ? 54 : CANVAS_W / 2;
+        const y = isTopLeft ? 226 : (isCenter ? CANVAS_H / 2 : 1468);
+
+        if (!isCenter) {
+          const tw = c.measureText(label).width;
+          const bx = isTopLeft ? x - 18 : x - tw / 2 - 20;
+          c.fillStyle = 'rgba(7, 10, 18, 0.42)';
+          roundRect(c, bx, y - 26, tw + 40, 52, 999);
+          c.fill();
+          c.strokeStyle = 'rgba(255, 255, 255, 0.16)';
+          c.lineWidth = 2;
+          roundRect(c, bx, y - 26, tw + 40, 52, 999);
+          c.stroke();
+        }
+
+        c.lineJoin = 'round';
+        c.lineWidth = isCenter ? 6 : 5;
+        c.strokeStyle = isCenter ? 'rgba(0, 0, 0, 0.25)' : 'rgba(0, 0, 0, 0.55)';
+        c.strokeText(label, x, y + 1);
+        c.fillStyle = isCenter ? 'rgba(255, 255, 255, 0.26)' : 'rgba(255, 255, 255, 0.76)';
+        c.fillText(label, x, y + 1);
+        c.restore();
+      }
+
+      function initVisualStyleControls() {
+        const FX_KEY = 'cinecode_visual_fx_v1';
+        const selSub = document.getElementById('subtitleStyleSelect');
+        const selFx = document.getElementById('postFilterSelect');
+        const inpWm = document.getElementById('watermarkInput');
+        const selWm = document.getElementById('watermarkPosSelect');
+
+        try {
+          const saved = JSON.parse(localStorage.getItem(FX_KEY) || 'null');
+          if (saved) {
+            if (saved.subtitleStyle) subtitleStyle = saved.subtitleStyle;
+            if (saved.postFilter) postFilter = saved.postFilter;
+            if (typeof saved.watermarkText === 'string') watermarkText = saved.watermarkText;
+            if (saved.watermarkPos) watermarkPos = saved.watermarkPos;
+          }
+        } catch (e) {}
+
+        if (selSub) selSub.value = subtitleStyle;
+        if (selFx) selFx.value = postFilter;
+        if (inpWm) inpWm.value = watermarkText;
+        if (selWm) selWm.value = watermarkPos;
+
+        const saveAndRefresh = () => {
+          try {
+            localStorage.setItem(FX_KEY, JSON.stringify({ subtitleStyle, postFilter, watermarkText, watermarkPos }));
+          } catch (e) {}
+          if (activeProject) renderFrame(currentTime);
+        };
+
+        if (selSub) selSub.addEventListener('change', () => { subtitleStyle = selSub.value; saveAndRefresh(); });
+        if (selFx) selFx.addEventListener('change', () => { postFilter = selFx.value; saveAndRefresh(); });
+        if (inpWm) inpWm.addEventListener('input', () => { watermarkText = inpWm.value; saveAndRefresh(); });
+        if (selWm) selWm.addEventListener('change', () => { watermarkPos = selWm.value; saveAndRefresh(); });
+      }
       function renderFrame(t) {
         if (!activeProject) return;
 
         dynamicCameraLabel = null;
         const { seg, index } = findSegmentAt(t);
         const localT = clamp(t - seg.start, 0, seg.duration);
+        currentSegProgress = seg.duration > 0 ? localT / seg.duration : 0;
 
         try {
           // Aplica transição suave (fade ou zoom) nos primeiros 0.35s de segmentos subsequentes
@@ -4228,6 +4665,8 @@
 
           // Legendas declarativas do JSON sempre renderizadas por cima (fora da câmera)
           renderDeclarativeSubtitles(t);
+          renderPostFX(ctx, t);
+renderWatermark(ctx);
         } catch (err) {
           showRuntimeError(err);
         }
@@ -5668,6 +6107,7 @@ if (activeProject.narrationLines && activeProject.narrationLines.length && !cust
         initExportSelectors();
         renderSfxPreviewTags();
         initAudioVoiceControls();
+        initVisualStyleControls();
         updatePlayPauseButton();
         updateMuteButton();
         applySubtitleModeUI();
