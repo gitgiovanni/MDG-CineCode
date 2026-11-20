@@ -4882,7 +4882,10 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
           let segCursor = 0;
           rawInput.segments.forEach((seg) => {
             const sDur = Number(seg.duration) || 0;
-            if (seg.music) compiledMusicNotes.push(...compileMusicBlock(seg.music, segCursor, segCursor + sDur));
+           if (seg.music) {
+              const mList = Array.isArray(seg.music) ? seg.music : [seg.music];
+              mList.forEach((m) => compiledMusicNotes.push(...compileMusicBlock(m, segCursor, segCursor + sDur)));
+            }
             if (Array.isArray(seg.ambience)) {
               seg.ambience.forEach((a) => { const c = compileAmbienceItem(a, segCursor, sDur); if (c) ambienceLayers.push(c); });
             }
@@ -4939,20 +4942,124 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
        * Converte um JSON (Formato A ou B) em um array de segmentos (Formato B)
        * para permitir anexar cenas sequencialmente.
        */
-      function extractRawSegments(rawObj) {
+    function extractRawSegments(rawObj) {
+        const clone = (v) => JSON.parse(JSON.stringify(v));
+        let segs;
+
         if (Array.isArray(rawObj.segments) && rawObj.segments.length > 0) {
-          return JSON.parse(JSON.stringify(rawObj.segments));
+          segs = clone(rawObj.segments);
+        } else {
+          segs = [{
+            name: rawObj.title || 'Cena',
+            duration: Number(rawObj.duration),
+            cameraLabel: (Array.isArray(rawObj.scenes) && rawObj.scenes[0] && rawObj.scenes[0].cameraLabel) || 'CAM · 1.00×',
+            transitionIn: 'fade',
+            scenes: Array.isArray(rawObj.scenes) ? clone(rawObj.scenes) : undefined,
+            subtitles: Array.isArray(rawObj.subtitles) ? clone(rawObj.subtitles) : [],
+            soundTriggers: Array.isArray(rawObj.soundTriggers) ? clone(rawObj.soundTriggers) : [],
+            renderBody: rawObj.renderBody
+          }];
         }
-        return [{
-          name: rawObj.title || 'Cena',
-          duration: Number(rawObj.duration),
-          cameraLabel: (Array.isArray(rawObj.scenes) && rawObj.scenes[0] && rawObj.scenes[0].cameraLabel) || 'CAM · 1.00×',
-          transitionIn: 'fade',
-          scenes: Array.isArray(rawObj.scenes) ? JSON.parse(JSON.stringify(rawObj.scenes)) : undefined,
-          subtitles: Array.isArray(rawObj.subtitles) ? JSON.parse(JSON.stringify(rawObj.subtitles)) : [],
-          soundTriggers: Array.isArray(rawObj.soundTriggers) ? JSON.parse(JSON.stringify(rawObj.soundTriggers)) : [],
-          renderBody: rawObj.renderBody
-        }];
+
+        let cursor = 0;
+        const ranges = segs.map((s) => {
+          const d = Math.max(0.2, Number(s.duration) || 0);
+          const r = { seg: s, start: cursor, end: cursor + d, dur: d };
+          cursor += d;
+          return r;
+        });
+        const totalDur = cursor;
+        const findRange = (t) => ranges.find((r) => t < r.end) || ranges[ranges.length - 1];
+
+        // 1. Preserva narração da raiz distribuindo em cada cena com tempo local exato
+        if (Array.isArray(rawObj.narration) && rawObj.narration.length > 0) {
+          rawObj.narration.forEach((n) => {
+            if (!n || typeof n.text !== 'string' || !n.text.trim()) return;
+            const absStart = Math.max(0, Number(n.start) || 0);
+            const target = findRange(absStart);
+            if (!Array.isArray(target.seg.narration)) target.seg.narration = [];
+            target.seg.narration.push(Object.assign({}, clone(n), {
+              start: Math.max(0, Number((absStart - target.start).toFixed(3)))
+            }));
+          });
+        }
+
+        // 2. Preserva legendas da raiz (Formato B)
+        if (Array.isArray(rawObj.segments) && Array.isArray(rawObj.subtitles) && rawObj.subtitles.length > 0) {
+          rawObj.subtitles.forEach((sub) => {
+            if (!sub || typeof sub.text !== 'string') return;
+            const absStart = Math.max(0, Number(sub.start) || 0);
+            const absEnd = Number(sub.end) || absStart + 1;
+            const target = findRange(absStart);
+            if (!Array.isArray(target.seg.subtitles)) target.seg.subtitles = [];
+            target.seg.subtitles.push(Object.assign({}, clone(sub), {
+              start: Math.max(0, Number((absStart - target.start).toFixed(3))),
+              end: Math.max(0.1, Number((absEnd - target.start).toFixed(3)))
+            }));
+          });
+        }
+
+        // 3. Preserva soundTriggers da raiz (Formato B)
+        if (Array.isArray(rawObj.segments) && Array.isArray(rawObj.soundTriggers) && rawObj.soundTriggers.length > 0) {
+          rawObj.soundTriggers.forEach((tr) => {
+            const absTime = Number(tr.time);
+            if (!Number.isFinite(absTime) || absTime < 0) return;
+            const target = findRange(absTime);
+            if (!Array.isArray(target.seg.soundTriggers)) target.seg.soundTriggers = [];
+            target.seg.soundTriggers.push(Object.assign({}, clone(tr), {
+              time: Math.max(0, Number((absTime - target.start).toFixed(3)))
+            }));
+          });
+        }
+
+        // 4. Preserva ambiências contínuas da raiz sem cortes entre cenas
+        if (Array.isArray(rawObj.ambience) && rawObj.ambience.length > 0) {
+          if (!Array.isArray(segs[0].ambience)) segs[0].ambience = [];
+          rawObj.ambience.forEach((a) => {
+            if (!a || typeof a !== 'object') return;
+            const item = clone(a);
+            item.start = Math.max(0, Number(item.start) || 0);
+            item.end = Number.isFinite(Number(item.end)) ? Number(item.end) : totalDur;
+            segs[0].ambience.push(item);
+          });
+        }
+
+        // 5. Preserva música da raiz fatiando as notas para o segmento certo
+        if (rawObj.music && typeof rawObj.music === 'object' && Array.isArray(rawObj.music.tracks)) {
+          const bpm = clamp(Number(rawObj.music.bpm) || 90, 30, 240);
+          const secPerBeat = 60 / bpm;
+          ranges.forEach((r) => {
+            const segTracks = [];
+            rawObj.music.tracks.forEach((tr) => {
+              if (!tr || !Array.isArray(tr.notes)) return;
+              const localNotes = [];
+              tr.notes.forEach((entry) => {
+                if (!Array.isArray(entry) || entry.length < 2) return;
+                const absSec = Number(entry[1]) * secPerBeat;
+                if (absSec >= r.start - 0.001 && absSec < r.end - 0.001) {
+                  const localBeat = Number(((absSec - r.start) / secPerBeat).toFixed(4));
+                  localNotes.push([clone(entry[0]), Math.max(0, localBeat), entry[2] !== undefined ? entry[2] : 1]);
+                }
+              });
+              if (localNotes.length > 0) {
+                segTracks.push(Object.assign({}, clone(tr), { notes: localNotes }));
+              }
+            });
+            if (segTracks.length > 0) {
+              const slicedMusic = {
+                bpm,
+                volume: rawObj.music.volume,
+                reverb: rawObj.music.reverb,
+                tracks: segTracks
+              };
+              if (!r.seg.music) r.seg.music = slicedMusic;
+              else if (Array.isArray(r.seg.music)) r.seg.music.push(slicedMusic);
+              else r.seg.music = [r.seg.music, slicedMusic];
+            }
+          });
+        }
+
+        return segs;
       }
 
       // =======================================================================
@@ -6193,8 +6300,8 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
       btnAppendScene.addEventListener('click', async () => {
         if (!validatedModalData || !activeProject) return;
         try {
-          const prevDur = activeProject.totalDuration;
           const currentSegs = extractRawSegments(activeProject.raw);
+          const prevDur = currentSegs.reduce((acc, s) => acc + Number(s.duration || 0), 0);
           const incomingSegs = extractRawSegments(validatedModalData.parsed);
           const mergedSegments = currentSegs.concat(incomingSegs);
 
