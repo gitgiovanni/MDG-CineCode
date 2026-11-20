@@ -4652,44 +4652,52 @@ if (customVoiceBuffer && narrationEnabled) {
        * Desenha personagem estilizado completo (âncora x,y = pés no chão).
        * Inclui cadeira automática na pose "sit" e recorte alto do cabelo sem tampar sobrancelhas.
        */
-      function drawCharacter(c, x, y, opts = {}) {
+     function drawCharacter(c, x, y, opts = {}) {
         const t = Number(opts.t) || 0;
         const sc = opts.scale !== undefined ? opts.scale : 1.0;
         const dir = opts.facing === -1 ? -1 : 1;
-        const pose = opts.pose || 'idle'; // idle | walk | run | celebrate | paint | phone | shock | sit
-        const mood = opts.mood || 'happy'; // happy | excited | neutral | confused | shocked | sad | angry
+        const pose = opts.pose || 'idle'; // idle | walk | run | celebrate | paint | phone | shock | sit | lounge | reach
+        const mood = opts.mood || 'happy'; // happy | excited | love | neutral | confused | shocked | sad | angry
         const skin = opts.skin || '#f3c19d';
         const shirt = opts.shirt || '#3b82f6';
         const pants = opts.pants || '#1e293b';
         const shoe = opts.shoe || '#0f172a';
+        const footwear = opts.footwear || 'shoe'; // shoe | sandal | barefoot
+        const nailColor = opts.nailColor || '';
         const hairColor = opts.hairColor || '#1c1917';
         const hairStyle = opts.hairStyle || 'spiky'; // spiky | short | long | cap | bald
         const prop = opts.prop || 'none'; // none | money | card | phone | roller | bag
         const talking = Boolean(opts.talking);
 
+        const isSeated = pose === 'sit' || pose === 'lounge' || pose === 'reach';
         const isMoving = pose === 'walk' || pose === 'run';
         const speed = pose === 'run' ? 14 : 7.5;
         const wPhase = t * speed;
         const swing = isMoving ? Math.sin(wPhase) * (pose === 'run' ? 0.72 : 0.48) : 0;
         const bounce = isMoving ? Math.abs(Math.sin(wPhase)) * (pose === 'run' ? 16 : 9)
           : (pose === 'celebrate' ? Math.abs(Math.sin(t * 9)) * 18 : Math.sin(t * 2.6) * 2.2);
-        const lean = pose === 'run' ? 0.14 : (pose === 'walk' ? 0.06 : (pose === 'shock' ? -0.08 : 0));
+        const lean = pose === 'run' ? 0.14
+          : (pose === 'walk' ? 0.06
+          : (pose === 'shock' ? -0.08
+          : (pose === 'lounge' ? -0.15
+          : (pose === 'reach' ? 0.22 : 0))));
 
         c.save();
         c.translate(x, y);
         c.scale(dir * sc, sc);
 
         // Sombra no chão
-        drawShadow(c, 0, 6, 52 * (1 - bounce * 0.008), 13, 0.30);
+        drawShadow(c, 0, 6, (pose === 'lounge' ? 68 : 52) * (1 - bounce * 0.008), 13, 0.30);
 
-        const hipY = (pose === 'sit' ? -82 : -112) - bounce;
+        const hipY = (isSeated ? -82 : -112) - bounce;
         const shX = Math.sin(lean) * 92;
         const shY = hipY - Math.cos(lean) * 92;
         const hdX = shX + Math.sin(lean) * 52;
         const hdY = shY - Math.cos(lean) * 52;
 
-        // Cadeira discreta automática na pose "sit" (desative com chair: false em motos/sofás)
-        if (pose === 'sit' && opts.chair !== false) {
+        // Cadeira automática apenas para pose "sit" (ou se chair: true explícito)
+        const showChair = (pose === 'sit' && opts.chair !== false) || (isSeated && opts.chair === true);
+        if (showChair) {
           c.save();
           const stemTop = hipY + 22;
           const stemH = Math.max(10, -stemTop - 4);
@@ -4697,14 +4705,12 @@ if (customVoiceBuffer && narrationEnabled) {
           roundRect(c, -36, -6, 68, 8, 4);
           c.fill();
           c.fillRect(-6, stemTop, 12, stemH);
-          // Encosto ergonômico atrás do tronco
           c.fillStyle = '#1e293b';
           roundRect(c, -56, hipY - 96, 20, 108, 10);
           c.fill();
           c.fillStyle = '#475569';
           roundRect(c, -51, hipY - 88, 5, 90, 3);
           c.fill();
-          // Assento
           c.fillStyle = '#1e293b';
           roundRect(c, -48, hipY + 8, 92, 18, 8);
           c.fill();
@@ -4716,11 +4722,57 @@ if (customVoiceBuffer && narrationEnabled) {
           c.beginPath(); c.moveTo(x1, y1); c.lineTo(x2, y2); c.lineTo(x3, y3); c.stroke();
         };
 
+        const drawFoot = (fx, fy, rot = 0) => {
+          c.save();
+          c.translate(fx, fy);
+          c.rotate(rot);
+          if (footwear === 'barefoot' || footwear === 'sandal') {
+            if (footwear === 'sandal') {
+              c.fillStyle = shoe === '#0f172a' ? '#f472b6' : shoe;
+              roundRect(c, -12, 3, 40, 8, 4);
+              c.fill();
+            }
+            c.fillStyle = skin;
+            c.beginPath();
+            c.ellipse(7, -1, 18, 9, 0, 0, Math.PI * 2);
+            c.fill();
+            if (nailColor) {
+              c.fillStyle = nailColor;
+              c.beginPath();
+              c.arc(21, -5, 3, 0, Math.PI * 2);
+              c.arc(24, -1, 2.5, 0, Math.PI * 2);
+              c.fill();
+            }
+            if (footwear === 'sandal') {
+              c.strokeStyle = shoe === '#0f172a' ? '#f472b6' : shoe;
+              c.lineWidth = 4;
+              c.beginPath();
+              c.moveTo(1, 4);
+              c.quadraticCurveTo(11, -8, 19, 3);
+              c.stroke();
+            }
+          } else {
+            c.fillStyle = shoe;
+            c.beginPath();
+            c.ellipse(9, 3, 21, 10, 0, 0, Math.PI * 2);
+            c.fill();
+          }
+          c.restore();
+        };
+
         // Pernas
-        const drawLeg = (ang, offX, col) => {
-          if (pose === 'sit') {
+        const drawLeg = (ang, offX, col, isFront) => {
+          if (pose === 'lounge' && isFront) {
+            const lift = Math.sin(t * 3.4) * 7;
+            const kx = offX + 62, ky = hipY - 10 + lift * 0.4;
+            const fx = offX + 128, fy = hipY - 22 + lift;
+            limb(offX, hipY, kx, ky, fx, fy, col, 24);
+            drawFoot(fx + 4, fy - 2, -0.85 + Math.sin(t * 3.4) * 0.12);
+            return;
+          }
+          if (isSeated) {
             limb(offX, hipY, offX + 46, hipY + 12, offX + 54, -8, col, 24);
-            c.fillStyle = shoe; c.beginPath(); c.ellipse(offX + 64, -4, 21, 10, 0, 0, Math.PI * 2); c.fill();
+            drawFoot(offX + 55, -7, 0);
             return;
           }
           const kx = offX + Math.sin(ang) * 56, ky = hipY + Math.cos(ang) * 56;
@@ -4728,13 +4780,18 @@ if (customVoiceBuffer && narrationEnabled) {
           const fx = kx + Math.sin(ang - bend) * 56;
           const fy = Math.min(-6, ky + Math.cos(ang - bend) * 56);
           limb(offX, hipY, kx, ky, fx, fy, col, 24);
-          c.fillStyle = shoe; c.beginPath(); c.ellipse(fx + 9, fy + 3, 21, 10, 0, 0, Math.PI * 2); c.fill();
+          drawFoot(fx, fy, 0);
         };
 
         // Braço traseiro
         let baEX = shX - 24, baEY = shY + 46, baHX = shX - 18, baHY = shY + 86;
         if (pose === 'celebrate' || pose === 'shock') {
           baEX = shX - 38; baEY = shY - 12; baHX = shX - 54; baHY = shY - 56 + Math.sin(t * 10) * 6;
+        } else if (pose === 'reach') {
+          const rub = Math.sin(t * 6.5) * 6;
+          baEX = shX + 36; baEY = shY + 34; baHX = shX + 76; baHY = shY + 26 + rub;
+        } else if (pose === 'lounge') {
+          baEX = shX - 28; baEY = shY + 38; baHX = shX - 42; baHY = shY + 72;
         } else if (isMoving) {
           baEX = shX + Math.sin(-swing) * 44; baEY = shY + 12 + Math.cos(-swing) * 44;
           baHX = baEX + Math.sin(-swing + 0.3) * 40; baHY = baEY + Math.cos(-swing + 0.3) * 40;
@@ -4742,8 +4799,8 @@ if (customVoiceBuffer && narrationEnabled) {
         limb(shX - 8, shY + 14, baEX, baEY, baHX, baHY, shirt, 21);
         c.fillStyle = skin; c.beginPath(); c.arc(baHX, baHY, 12, 0, Math.PI * 2); c.fill();
 
-        drawLeg(-swing, -11, pants);
-        drawLeg(swing, 11, pants);
+        drawLeg(-swing, -11, pants, false);
+        drawLeg(swing, 11, pants, true);
 
         // Tronco / Camisa com volume
         c.save();
@@ -4759,13 +4816,12 @@ if (customVoiceBuffer && narrationEnabled) {
         c.beginPath(); c.arc(6, -48, 12, 0, Math.PI); c.fill();
         c.restore();
 
-        // Cabeça + rosto expressivo (olhos que piscam, sobrancelhas livres e boca animada)
+        // Cabeça + rosto expressivo
         c.save();
         c.translate(hdX, hdY);
-        const headTilt = mood === 'confused' ? 0.14 : (mood === 'sad' ? 0.1 : Math.sin(t * 2) * 0.03);
+        const headTilt = mood === 'confused' ? 0.14 : (mood === 'sad' ? 0.1 : (pose === 'reach' ? 0.12 : Math.sin(t * 2) * 0.03));
         c.rotate(headTilt);
 
-        // Pescoço e orelha
         c.fillStyle = skin;
         c.fillRect(-10, 30, 20, 22);
         const skGrad = c.createRadialGradient(-10, -12, 8, 0, 0, 48);
@@ -4776,7 +4832,7 @@ if (customVoiceBuffer && narrationEnabled) {
         c.fillStyle = skin;
         c.beginPath(); c.arc(-36, 4, 9, 0, Math.PI * 2); c.fill();
 
-        // Cabelo / Boné (recorte alto na testa para nunca cobrir as sobrancelhas)
+        // Cabelo / Boné
         if (hairStyle !== 'bald') {
           if (hairStyle === 'cap') {
             c.fillStyle = shirt;
@@ -4815,16 +4871,28 @@ if (customVoiceBuffer && narrationEnabled) {
         }
 
         // Bochechas
-        c.fillStyle = 'rgba(244, 114, 140, 0.24)';
-        c.beginPath(); c.ellipse(-2, 11, 8, 5, 0, 0, Math.PI * 2); c.ellipse(30, 11, 8, 5, 0, 0, Math.PI * 2); c.fill();
+        c.fillStyle = mood === 'love' ? 'rgba(244, 63, 94, 0.36)' : 'rgba(244, 114, 140, 0.24)';
+        c.beginPath(); c.ellipse(-2, 11, 9, 5.5, 0, 0, Math.PI * 2); c.ellipse(30, 11, 9, 5.5, 0, 0, Math.PI * 2); c.fill();
 
-        // Olhos com brilho + piscada automática
-        const blink = mood !== 'shocked' && ((t % 3.1) > 2.97);
+        // Olhos
+        const blink = mood !== 'shocked' && mood !== 'love' && ((t % 3.1) > 2.97);
         const eyeY = -3;
         const eyes = [4, 26];
         const eyeR = mood === 'shocked' ? 9.5 : 7.5;
         eyes.forEach((ex) => {
-          if (blink) {
+          if (mood === 'love') {
+            const pulse = 1 + Math.sin(t * 7) * 0.1;
+            c.save();
+            c.translate(ex + 1, eyeY + 1);
+            c.scale(pulse, pulse);
+            c.fillStyle = '#f43f5e';
+            c.beginPath();
+            c.moveTo(0, 7);
+            c.bezierCurveTo(-11, 0, -9, -10, 0, -4);
+            c.bezierCurveTo(9, -10, 11, 0, 0, 7);
+            c.fill();
+            c.restore();
+          } else if (blink) {
             c.strokeStyle = '#0f172a'; c.lineWidth = 4; c.lineCap = 'round';
             c.beginPath(); c.moveTo(ex - 6, eyeY); c.lineTo(ex + 6, eyeY); c.stroke();
           } else {
@@ -4838,7 +4906,7 @@ if (customVoiceBuffer && narrationEnabled) {
           }
         });
 
-        // Sobrancelhas expressivas (bem visíveis abaixo da linha do cabelo)
+        // Sobrancelhas
         c.strokeStyle = hairColor; c.lineWidth = 3.8; c.lineCap = 'round';
         eyes.forEach((ex, idx) => {
           const y1 = eyeY - 13 + (mood === 'angry' ? (idx ? -3 : 3) : (mood === 'sad' ? (idx ? 3 : -3) : (mood === 'shocked' ? -4 : 0)));
@@ -4846,13 +4914,13 @@ if (customVoiceBuffer && narrationEnabled) {
           c.beginPath(); c.moveTo(ex - 7, y1); c.lineTo(ex + 7, y2); c.stroke();
         });
 
-        // Boca expressiva
+        // Boca
         c.strokeStyle = '#5c2d1c'; c.lineWidth = 4; c.lineCap = 'round';
         const talkOpen = talking ? (0.35 + Math.abs(Math.sin(t * 16)) * 0.65) : 0;
         if (mood === 'shocked') {
           c.fillStyle = '#7f1d1d';
           c.beginPath(); c.ellipse(15, 20, 9, 12, 0, 0, Math.PI * 2); c.fill(); c.stroke();
-        } else if (mood === 'excited' || talkOpen > 0.5) {
+        } else if (mood === 'excited' || mood === 'love' || talkOpen > 0.5) {
           c.fillStyle = '#991b1b';
           c.beginPath(); c.arc(15, 15, 12, 0, Math.PI); c.closePath(); c.fill(); c.stroke();
         } else if (mood === 'sad' || mood === 'angry') {
@@ -4864,10 +4932,13 @@ if (customVoiceBuffer && narrationEnabled) {
         }
         c.restore();
 
-        // Braço frontal + objeto na mão (`prop`)
+        // Braço frontal + prop
         let faEX = shX + 26, faEY = shY + 46, faHX = shX + 34, faHY = shY + 82;
         if (pose === 'celebrate' || pose === 'shock') {
           faEX = shX + 42; faEY = shY - 12; faHX = shX + 58; faHY = shY - 58 - Math.sin(t * 10) * 6;
+        } else if (pose === 'reach') {
+          const rub = Math.cos(t * 6.5) * 6;
+          faEX = shX + 42; faEY = shY + 38; faHX = shX + 86; faHY = shY + 34 + rub;
         } else if (pose === 'paint') {
           const strokeY = Math.sin(t * 9) * 34;
           faEX = shX + 46; faEY = shY + 24; faHX = shX + 78; faHY = shY - 10 + strokeY;
@@ -4910,7 +4981,6 @@ if (customVoiceBuffer && narrationEnabled) {
 
         c.restore();
       }
-      
       // Objeto `h` passado para todo `renderBody(ctx, t, duration, h)`
       const RENDER_HELPERS = {
         clamp,
@@ -6647,8 +6717,9 @@ renderWatermark(ctx);
         }
       }
 
-      function finishRecording() {
+     function finishRecording() {
         isRecording = false;
+        isPlaying = false;
         const dur = activeProject ? activeProject.totalDuration : 0;
         renderFrame(dur);
 
@@ -7099,7 +7170,9 @@ renderWatermark(ctx);
           '5. Atalhos de SFX opcionais: woodKnock, footstep, pop, whoosh, chime, whistle, bark, meow, boing, impact, crash, applause, sadTrombone, laser, splash, doorCreak, bell, alert.',
           '',
           'REGRAS VISUAIS 9:16 (1080x1920):',
-          '- PERSONAGENS DETALHADOS OBRIGATÓRIOS: SEMPRE use h.drawCharacter(ctx, x, yPésNoChão, { t, scale, facing, pose, mood, shirt, pants, skin, hairColor, hairStyle, prop, talking, chair }) para desenhar pessoas! Poses: idle, walk, run, celebrate, paint, phone, shock, sit (gera cadeira automática; passe chair:false em motos/sofás). Moods: happy, excited, neutral, confused, shocked, sad, angry. Props: none, money, card, phone, roller, bag. Escreva números/siglas normalmente na narração (ex: GTA 6, PS5, 25 de Março).',
+         '- PERSONAGENS DETALHADOS OBRIGATÓRIOS: SEMPRE use h.drawCharacter(ctx, x, yPésNoChão, { t, scale, facing, pose, mood, shirt, pants, skin, hairColor, hairStyle, prop, talking, chair, footwear, nailColor })! Poses: idle, walk, run, celebrate, paint, phone, shock, sit (cadeira automática; passe chair:false em sofás/motos/bancos), lounge (sentado relaxado com perna esticada conectada ao corpo), reach (inclinado pra frente alcançando/interagindo com os 2 braços). Moods: happy, excited, love, neutral, confused, shocked, sad, angry. Footwear: shoe, sandal, barefoot (+ nailColor opcional).',
+          '- PROIBIDO MEMBROS FLUTUANTES: NUNCA desenhe mãos, pés ou cabeças soltos flutuando no ar desconectados do corpo! Use pose:"lounge" + pose:"reach" ou faça um quadro de close-up real (com a perna/braço saindo da borda da tela).',
+          '- ILUMINAÇÃO E CENÁRIO: use createRadialGradient para brilhos/abajures (nunca círculos chapados no fundo). Assinatura exata: h.drawImpactRings(ctx, x, y, progress, color). Escreva números/siglas normalmente na narração (ex: GTA 6, PS5).',
           '- ZONA PROIBIDA DE TEXTO/CENÁRIO: NÃO coloque textos soltos, placas ou relógios acima de Y=460 (essa área pertence às legendas e marca d\'água). Use NO MÁXIMO 1 placa/elemento textual por cena para não poluir.',
           '- SINCRONIA PERFEITA DE NARRAÇÃO: calcule a duração de cada segmento pela fala (~2.4 palavras por segundo + 0.8s de respiro). Exemplo: frase de 12 palavras = segmento de 5.5s a 6.0s. NUNCA coloque frase longa em cena de 3s!',
           '- Soma das durações até 60s. renderBody 100% determinístico em `t` (zero imagens/URLs externas).',
