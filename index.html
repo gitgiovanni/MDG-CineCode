@@ -3792,32 +3792,130 @@ function speakNarrationLine(line) {
         } catch (e) {}
       }
 
-      function adjustProjectDurationForVoice(voiceEndSec) {
-        if (!activeProject || !activeProject.segments || !activeProject.segments.length) return;
-        if (activeProject.baseTotalDuration === undefined) {
-          activeProject.baseTotalDuration = activeProject.totalDuration;
-          (activeProject.globalSubtitles || []).forEach((s) => { s._baseEnd = s.end; });
-        }
-        const baseDur = activeProject.baseTotalDuration;
-        const targetDur = clamp(Math.max(baseDur, (Number(voiceEndSec) || 0) + 0.9), baseDur, MAX_DURATION);
-        if (Math.abs(targetDur - activeProject.totalDuration) < 0.05) return;
+      function syncProjectTimelineWithVoice(proj, clips) {
+        if (!proj || !proj.segments || !proj.segments.length) return [];
 
-        activeProject.totalDuration = targetDur;
-        const lastSeg = activeProject.segments[activeProject.segments.length - 1];
-        lastSeg.end = targetDur;
-        lastSeg.duration = Math.max(0.5, targetDur - lastSeg.start);
+        // Modo reset (quando limpa a faixa de voz)
+        if (!clips || !clips.length) {
+          proj.totalDuration = proj.baseTotalDuration || proj.totalDuration;
+          proj.segments.forEach((seg) => {
+            seg.start = seg.baseStart;
+            seg.end = seg.baseEnd;
+            seg.duration = seg.baseDuration;
+          });
+          (proj.scenes || []).forEach((sc) => {
+            sc.start = sc.baseStart;
+            sc.end = sc.baseEnd;
+          });
+          (proj.globalSoundTriggers || []).forEach((tr) => { tr.time = tr.baseTime; });
+          (proj.compiledMusicNotes || []).forEach((n) => { n.time = n.baseTime; });
+          (proj.ambienceLayers || []).forEach((a) => { a.start = a.baseStart; a.end = a.baseEnd; });
 
-        if (activeProject.scenes && activeProject.scenes.length) {
-          activeProject.scenes[activeProject.scenes.length - 1].end = targetDur;
+          if (proj.narrationLines && proj.narrationLines.length) {
+            const resetSubs = [];
+            proj.narrationLines.forEach((ln, idx) => {
+              const nextStart = idx + 1 < proj.narrationLines.length ? proj.narrationLines[idx + 1].baseStart : proj.totalDuration;
+              resetSubs.push(...buildWeightedSubtitleChunks(ln.text, ln.baseStart, ln.baseStart + Math.max(0.5, ln.maxDur - 0.12), nextStart - 0.03));
+            });
+            proj.globalSubtitles = resetSubs;
+          }
+
+          durationEngineBadge.textContent = `${proj.totalDuration.toFixed(1)}s · JSON Engine`;
+          scrubber.setAttribute('aria-valuemax', proj.totalDuration.toFixed(1));
+          buildTimelineMarkersAndScenes();
+          updatePlayerUI();
+          return [];
         }
-        (activeProject.globalSubtitles || []).forEach((s) => {
-          if (s._baseEnd >= baseDur - 0.5) s.end = Math.max(s._baseEnd, targetDur - 0.3);
+
+        // Agrupa os áudios gerados pelo segmento dono de cada fala
+        const clipsBySeg = proj.segments.map(() => []);
+        clips.forEach((c) => {
+          const idx = clamp(Number.isInteger(c.segIndex) ? c.segIndex : 0, 0, proj.segments.length - 1);
+          clipsBySeg[idx].push(c);
         });
 
-        durationEngineBadge.textContent = `${targetDur.toFixed(1)}s · JSON Engine`;
-        scrubber.setAttribute('aria-valuemax', targetDur.toFixed(1));
+        let segCursor = 0;
+        let voiceCursor = 0;
+        const placed = [];
+
+        proj.segments.forEach((seg, sIdx) => {
+          const segStart = segCursor;
+          const segClips = clipsBySeg[sIdx];
+          let segVoiceEnd = segStart;
+
+          segClips.forEach((c) => {
+            const localOff = Math.max(0, Number(c.localStart) || 0);
+            const actualStart = Math.max(segStart + localOff, voiceCursor);
+            const actualEnd = actualStart + c.buffer.duration;
+            voiceCursor = actualEnd + 0.08;
+            segVoiceEnd = Math.max(segVoiceEnd, actualEnd);
+            placed.push({ start: actualStart, end: actualEnd, text: c.text, buffer: c.buffer, segIndex: sIdx });
+          });
+
+          const tailPad = sIdx === proj.segments.length - 1 ? 0.9 : 0.35;
+          const neededDur = segClips.length > 0 ? (segVoiceEnd - segStart + tailPad) : seg.baseDuration;
+          const newDur = Math.max(seg.baseDuration, neededDur);
+
+          seg.start = segStart;
+          seg.duration = newDur;
+          seg.end = segStart + newDur;
+          segCursor = seg.end;
+        });
+
+        proj.totalDuration = segCursor;
+
+        // Reposiciona cenas, SFX, músicas por segmento e ambiências acompanhando cada corte
+        (proj.scenes || []).forEach((sc) => {
+          const seg = proj.segments[sc.segIndex] || proj.segments[0];
+          if (sc.isFullSeg) {
+            sc.start = seg.start;
+            sc.end = seg.end;
+          } else {
+            const ratio = seg.duration / Math.max(0.1, seg.baseDuration);
+            sc.start = seg.start + sc.localStart * ratio;
+            sc.end = seg.start + sc.localEnd * ratio;
+          }
+        });
+
+        (proj.globalSoundTriggers || []).forEach((tr) => {
+          const seg = proj.segments[tr.segIndex] || proj.segments[0];
+          tr.time = clamp(seg.start + tr.localTime, seg.start, Math.max(seg.start, seg.end - 0.05));
+        });
+
+        (proj.compiledMusicNotes || []).forEach((n) => {
+          if (n.segIndex >= 0 && proj.segments[n.segIndex]) {
+            n.time = proj.segments[n.segIndex].start + n.localTime;
+          } else {
+            n.time = n.baseTime;
+          }
+        });
+
+        (proj.ambienceLayers || []).forEach((amb) => {
+          if (amb.coversFull) {
+            amb.start = amb.baseStart;
+            amb.end = proj.totalDuration;
+          } else if (amb.segIndex >= 0 && proj.segments[amb.segIndex]) {
+            const seg = proj.segments[amb.segIndex];
+            amb.start = seg.start + amb.localStart;
+            amb.end = Math.min(seg.end, seg.start + amb.localEnd);
+          }
+        });
+
+        // Quebra as legendas em blocos curtos (3–5 palavras) sincronizados com a duração real do MP3
+        const newSubs = [];
+        placed.forEach((p, idx) => {
+          const nextStart = idx + 1 < placed.length ? placed[idx + 1].start : proj.totalDuration;
+          newSubs.push(...buildWeightedSubtitleChunks(p.text, p.start, p.end, nextStart - 0.03));
+        });
+        proj.globalSubtitles = newSubs;
+        proj.hasSyncedNarrationSubs = true;
+
+        durationEngineBadge.textContent = `${proj.totalDuration.toFixed(1)}s · JSON Engine`;
+        scrubber.setAttribute('aria-valuemax', proj.totalDuration.toFixed(1));
         buildTimelineMarkersAndScenes();
         updatePlayerUI();
+
+        return placed;
       }
 
       async function generateServerlessVoiceTrack(silent = false) {
@@ -3854,7 +3952,7 @@ function speakNarrationLine(line) {
               const words = ln.text.split(/\s+/).filter(Boolean).length;
               const avail = Math.max(1.5, (ln.maxDur || 4.0) - 0.25);
               const estDur = words / 2.65;
-              const autoRateMult = estDur > avail ? clamp(estDur / avail, 1.0, 1.42) : 1.0;
+              const autoRateMult = estDur > avail ? clamp(estDur / avail, 1.0, 1.28) : 1.0;
               const finalRate = Math.max(Number(ln.rate) || 1.0, autoRateMult);
               const ratePct = Math.round((finalRate - 1.0) * 100);
               const pitchHz = Math.round(((Number(ln.pitch) || 1.0) - 1.0) * 18);
@@ -3868,27 +3966,28 @@ function speakNarrationLine(line) {
               const ab = await res.arrayBuffer();
               if (myToken !== voiceGenToken || activeProject !== targetProj) return;
               const buf = await audioCtx.decodeAudioData(ab);
-              clips[i] = { start: ln.start, text: ln.text, buffer: buf };
+              clips[i] = {
+                start: ln.baseStart,
+                localStart: ln.localStart,
+                segIndex: ln.segIndex,
+                text: ln.text,
+                buffer: buf
+              };
               doneCount++;
               voiceTrackStatus.textContent = `Gerando voz TikTok (${doneCount}/${lines.length})...`;
             }));
             if (myToken !== voiceGenToken || activeProject !== targetProj) return false;
           }
 
-          const sr = clips[0].buffer.sampleRate;
-          let maxEnd = targetProj.totalDuration;
-          let cursorEnd = 0;
-          const placed = clips.map((c) => {
-            const actualStart = Math.max(c.start, cursorEnd);
-            const actualEnd = actualStart + c.buffer.duration;
-            cursorEnd = actualEnd + 0.08;
-            maxEnd = Math.max(maxEnd, cursorEnd);
-            return { start: actualStart, end: actualEnd, text: c.text, buffer: c.buffer };
-          });
+          if (myToken !== voiceGenToken || activeProject !== targetProj) return false;
 
-          const totalFrames = Math.ceil(maxEnd * sr);
+          // Sincroniza todas as cenas, SFX e legendas com a duração real de cada áudio
+          const placed = syncProjectTimelineWithVoice(targetProj, clips);
+          const sr = clips[0].buffer.sampleRate;
+          const totalFrames = Math.ceil(targetProj.totalDuration * sr);
           const master = audioCtx.createBuffer(1, totalFrames, sr);
           const out = master.getChannelData(0);
+
           placed.forEach((p) => {
             const src = p.buffer.getChannelData(0);
             const off = Math.floor(p.start * sr);
@@ -3897,30 +3996,16 @@ function speakNarrationLine(line) {
             }
           });
 
-          if (myToken !== voiceGenToken || activeProject !== targetProj) return false;
-
           customVoiceBuffer = master;
           voiceDuckWindows = placed.map((p) => ({ start: p.start, end: p.end }));
-          adjustProjectDurationForVoice(cursorEnd);
-          targetProj.globalSubtitles = placed.map((p, idx) => {
-            const nextStart = idx + 1 < placed.length ? placed[idx + 1].start : targetProj.totalDuration;
-            return {
-              start: p.start,
-              speakEnd: p.end,
-              end: Math.min(nextStart - 0.03, p.end + 0.25),
-              text: p.text,
-              options: {}
-            };
-          });
-          targetProj.hasSyncedNarrationSubs = true;
           clearExportedFile();
 
           if (btnClearVoice) btnClearVoice.style.display = 'inline-flex';
           const shortName = (voiceSelect && voiceSelect.options[voiceSelect.selectedIndex])
             ? voiceSelect.options[voiceSelect.selectedIndex].text.split(' (')[0]
             : 'Neural';
-          voiceTrackStatus.textContent = `✓ Voz ${shortName} pronta (${clips.length} falas) — inclusa no vídeo!`;
-          if (!silent) showToast(`Voz ${shortName} pronta e sincronizada!`);
+          voiceTrackStatus.textContent = `✓ Voz ${shortName} pronta (${clips.length} falas) — cenas sincronizadas!`;
+          if (!silent) showToast(`Voz ${shortName} pronta e cenas sincronizadas!`);
           return true;
         } catch (err) {
           if (myToken === voiceGenToken) {
@@ -4048,7 +4133,7 @@ function speakNarrationLine(line) {
             stopAllContinuousAudio();
             customVoiceBuffer = null;
             voiceDuckWindows = [];
-          adjustProjectDurationForVoice(0);
+         syncProjectTimelineWithVoice(activeProject, null);
             btnClearVoice.style.display = 'none';
             voiceTrackStatus.textContent = 'TTS ao vivo ativo. Para embutir voz no arquivo exportado, grave no Mic ou suba um .mp3/.wav.';
             showToast('Faixa de voz removida.');
@@ -4326,7 +4411,73 @@ if (customVoiceBuffer && narrationEnabled) {
        *  - Word-wrap automático (até 3 linhas) + auto-shrink da fonte
        *  - Pill compacto ajustado ao texto real + contorno escuro grosso + pop-in easeOutBack
        */
-    function drawSubtitle(c, text, progress = 1.0, options = {}) {
+   function wordSpeakWeight(word) {
+        const clean = String(word || '').replace(/[^\p{L}\p{N}]/gu, '');
+        let w = Math.max(2.2, clean.length * 0.85 + 1.4);
+        if (/[,;:]$/.test(word)) w += 2.6;
+        else if (/[.!?…]$/.test(word)) w += 4.0;
+        else if (/[-—]$/.test(word)) w += 1.6;
+        return w;
+      }
+
+      function buildWeightedSubtitleChunks(text, startSec, endSec, maxEndSec = null) {
+        const words = String(text || '').trim().split(/\s+/).filter(Boolean);
+        if (!words.length) return [];
+
+        const chunks = [];
+        let cur = [];
+        for (let i = 0; i < words.length; i++) {
+          const w = words[i];
+          cur.push(w);
+          const hasPunct = /[,.;:!?…]$/.test(w);
+          const curChars = cur.join(' ').length;
+          if (cur.length >= 5 || (cur.length >= 2 && hasPunct) || (cur.length >= 4 && curChars >= 22)) {
+            chunks.push(cur);
+            cur = [];
+          }
+        }
+        if (cur.length) {
+          if (cur.length === 1 && chunks.length > 0 && chunks[chunks.length - 1].length <= 4) {
+            chunks[chunks.length - 1].push(cur[0]);
+          } else {
+            chunks.push(cur);
+          }
+        }
+
+        const totalDur = Math.max(0.25, endSec - startSec);
+        const chunkWeights = chunks.map((arr) => arr.map(wordSpeakWeight));
+        const totalWeight = chunkWeights.reduce((acc, ws) => acc + ws.reduce((a, b) => a + b, 0), 0) || 1;
+
+        const out = [];
+        let cursor = startSec;
+        for (let i = 0; i < chunks.length; i++) {
+          const ws = chunkWeights[i];
+          const cw = ws.reduce((a, b) => a + b, 0) || 1;
+          const dur = (cw / totalWeight) * totalDur;
+          const cStart = cursor;
+          const cEnd = i === chunks.length - 1 ? endSec : cursor + dur;
+
+          let accW = 0;
+          const wordTimings = ws.map((w) => {
+            const s = accW / cw;
+            accW += w;
+            return { start: s, end: accW / cw };
+          });
+
+          const lastEnd = maxEndSec !== null ? Math.min(maxEndSec, cEnd + 0.22) : cEnd + 0.22;
+          out.push({
+            start: cStart,
+            speakEnd: cEnd,
+            end: i === chunks.length - 1 ? Math.max(cEnd, lastEnd) : Math.max(cStart + 0.08, cEnd - 0.015),
+            text: chunks[i].join(' '),
+            options: { wordTimings }
+          });
+          cursor = cEnd;
+        }
+        return out;
+      }
+
+      function drawSubtitle(c, text, progress = 1.0, options = {}) {
         if (subtitleMode === 'hidden' || !text) return;
 
         const maxBoxWidth = 860;
@@ -4340,7 +4491,7 @@ if (customVoiceBuffer && narrationEnabled) {
         const displayText = style === 'pop' ? String(text).toUpperCase() : String(text);
         const startSize = options.fontSize || (style === 'cinema' ? 62 : style === 'pop' ? 78 : 74);
         const yPos = subtitleMode === 'bottom' ? 1600 : 300;
-        const popScale = progress < 1 ? lerp(0.76, 1.0, easeOutBack(clamp(progress, 0, 1))) : 1.0;
+        const popScale = progress < 1 ? lerp(0.84, 1.0, easeOutBack(clamp(progress, 0, 1))) : 1.0;
 
         c.save();
         c.globalAlpha = alpha;
@@ -4349,7 +4500,7 @@ if (customVoiceBuffer && narrationEnabled) {
         c.scale(popScale, popScale);
 
         const { fontSize, lines, maxLineW } = layoutSubtitleText(c, displayText, startSize, maxTextWidth);
-        const lineHeight = fontSize * (style === 'cinema' ? 1.24 : 1.18);
+        const lineHeight = fontSize * (style === 'cinema' ? 1.24 : 1.2);
         const totalTextH = (lines.length - 1) * lineHeight;
 
         if (style === 'karaoke') {
@@ -4361,17 +4512,33 @@ if (customVoiceBuffer && narrationEnabled) {
 
           const lineWords = lines.map((ln) => ln.split(/\s+/).filter(Boolean));
           const totalWords = lineWords.reduce((sum, arr) => sum + arr.length, 0) || 1;
-const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0, 1) : clamp(currentSegProgress, 0, 1);
-          const activeWordIdx = Math.min(totalWords - 1, Math.floor(readP * totalWords));
-          const spaceW = c.measureText(' ').width;
+          const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0, 1) : clamp(currentSegProgress, 0, 1);
+
+          let activeWordIdx = Math.min(totalWords - 1, Math.floor(readP * totalWords));
+          if (Array.isArray(options.wordTimings) && options.wordTimings.length === totalWords) {
+            activeWordIdx = totalWords - 1;
+            for (let wi = 0; wi < totalWords; wi++) {
+              if (readP < options.wordTimings[wi].end) {
+                activeWordIdx = wi;
+                break;
+              }
+            }
+          }
+
+          const spaceW = Math.max(c.measureText(' ').width * 1.48, fontSize * 0.36);
 
           let globalIdx = 0;
           for (let i = 0; i < lineWords.length; i++) {
             const words = lineWords[i];
             const widths = words.map((w) => c.measureText(w).width);
-            const totalW = widths.reduce((a, b) => a + b, 0) + spaceW * Math.max(0, words.length - 1);
+            const rawLineW = widths.reduce((a, b) => a + b, 0) + spaceW * Math.max(0, words.length - 1);
+            const lineScale = rawLineW > maxBoxWidth ? (maxBoxWidth / rawLineW) : 1;
             const ly = -totalTextH / 2 + i * lineHeight;
-            let cursorX = -totalW / 2;
+
+            c.save();
+            c.translate(0, ly);
+            c.scale(lineScale, lineScale);
+            let cursorX = -rawLineW / 2;
 
             for (let j = 0; j < words.length; j++) {
               const w = words[j];
@@ -4381,22 +4548,23 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
               const isSpoken = globalIdx < activeWordIdx;
 
               c.save();
-              c.translate(cx, ly);
+              c.translate(cx, 0);
               if (isActive) {
-                c.scale(1.1, 1.1);
-                c.fillStyle = 'rgba(124, 58, 237, 0.88)';
-                roundRect(c, -ww / 2 - 14, -fontSize * 0.62, ww + 28, fontSize * 1.24, 18);
+                c.scale(1.07, 1.07);
+                c.fillStyle = 'rgba(124, 58, 237, 0.90)';
+                roundRect(c, -ww / 2 - 10, -fontSize * 0.58, ww + 20, fontSize * 1.16, 16);
                 c.fill();
               }
               c.strokeStyle = 'rgba(0, 0, 0, 0.88)';
               c.strokeText(w, 0, 2);
-              c.fillStyle = isActive ? '#fde047' : (isSpoken ? '#ffffff' : 'rgba(255, 255, 255, 0.68)');
+              c.fillStyle = isActive ? '#fde047' : (isSpoken ? '#ffffff' : 'rgba(255, 255, 255, 0.72)');
               c.fillText(w, 0, 2);
               c.restore();
 
               cursorX += ww + spaceW;
               globalIdx++;
             }
+            c.restore();
           }
           c.restore();
           return;
@@ -4479,10 +4647,10 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
         }
         c.restore();
       }
-/**
+
+      /**
        * Desenha personagem estilizado completo (âncora x,y = pés no chão).
-       * Garante olhos com brilho e piscadas, sobrancelhas, boca expressiva, cabelo,
-       * articulação orgânica e objetos na mão para qualquer cena.
+       * Inclui cadeira automática na pose "sit" e recorte alto do cabelo sem tampar sobrancelhas.
        */
       function drawCharacter(c, x, y, opts = {}) {
         const t = Number(opts.t) || 0;
@@ -4504,7 +4672,7 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
         const wPhase = t * speed;
         const swing = isMoving ? Math.sin(wPhase) * (pose === 'run' ? 0.72 : 0.48) : 0;
         const bounce = isMoving ? Math.abs(Math.sin(wPhase)) * (pose === 'run' ? 16 : 9)
-          : (pose === 'celebrate' ? Math.abs(Math.sin(t * 9)) * 18 : Math.sin(t * 2.6) * 2.5);
+          : (pose === 'celebrate' ? Math.abs(Math.sin(t * 9)) * 18 : Math.sin(t * 2.6) * 2.2);
         const lean = pose === 'run' ? 0.14 : (pose === 'walk' ? 0.06 : (pose === 'shock' ? -0.08 : 0));
 
         c.save();
@@ -4512,13 +4680,36 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
         c.scale(dir * sc, sc);
 
         // Sombra no chão
-        drawShadow(c, 0, 6, 50 * (1 - bounce * 0.008), 13, 0.30);
+        drawShadow(c, 0, 6, 52 * (1 - bounce * 0.008), 13, 0.30);
 
         const hipY = (pose === 'sit' ? -82 : -112) - bounce;
         const shX = Math.sin(lean) * 92;
         const shY = hipY - Math.cos(lean) * 92;
         const hdX = shX + Math.sin(lean) * 52;
         const hdY = shY - Math.cos(lean) * 52;
+
+        // Cadeira discreta automática na pose "sit" (desative com chair: false em motos/sofás)
+        if (pose === 'sit' && opts.chair !== false) {
+          c.save();
+          const stemTop = hipY + 22;
+          const stemH = Math.max(10, -stemTop - 4);
+          c.fillStyle = '#334155';
+          roundRect(c, -36, -6, 68, 8, 4);
+          c.fill();
+          c.fillRect(-6, stemTop, 12, stemH);
+          // Encosto ergonômico atrás do tronco
+          c.fillStyle = '#1e293b';
+          roundRect(c, -56, hipY - 96, 20, 108, 10);
+          c.fill();
+          c.fillStyle = '#475569';
+          roundRect(c, -51, hipY - 88, 5, 90, 3);
+          c.fill();
+          // Assento
+          c.fillStyle = '#1e293b';
+          roundRect(c, -48, hipY + 8, 92, 18, 8);
+          c.fill();
+          c.restore();
+        }
 
         const limb = (x1, y1, x2, y2, x3, y3, col, w) => {
           c.strokeStyle = col; c.lineWidth = w; c.lineCap = 'round'; c.lineJoin = 'round';
@@ -4568,7 +4759,7 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
         c.beginPath(); c.arc(6, -48, 12, 0, Math.PI); c.fill();
         c.restore();
 
-        // Cabeça + rosto expressivo (SEMPRE com olhos que piscam, sobrancelhas e boca)
+        // Cabeça + rosto expressivo (olhos que piscam, sobrancelhas livres e boca animada)
         c.save();
         c.translate(hdX, hdY);
         const headTilt = mood === 'confused' ? 0.14 : (mood === 'sad' ? 0.1 : Math.sin(t * 2) * 0.03);
@@ -4585,32 +4776,51 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
         c.fillStyle = skin;
         c.beginPath(); c.arc(-36, 4, 9, 0, Math.PI * 2); c.fill();
 
-        // Cabelo / Boné
+        // Cabelo / Boné (recorte alto na testa para nunca cobrir as sobrancelhas)
         if (hairStyle !== 'bald') {
-          c.fillStyle = hairColor;
-          c.beginPath();
-          c.arc(-3, -9, 45, Math.PI * 0.94, Math.PI * 2.02);
-          if (hairStyle === 'spiky') {
-            c.lineTo(36, -34); c.lineTo(14, -58); c.lineTo(0, -42); c.lineTo(-18, -60); c.lineTo(-34, -36);
-          } else if (hairStyle === 'long') {
-            c.lineTo(38, 28); c.lineTo(26, 26); c.lineTo(26, -16); c.lineTo(-28, -16); c.lineTo(-34, 34); c.lineTo(-46, 28);
-          }
-          c.closePath();
-          c.fill();
           if (hairStyle === 'cap') {
             c.fillStyle = shirt;
-            c.beginPath(); c.arc(0, -14, 45, Math.PI, Math.PI * 2); c.fill();
-            c.fillRect(10, -20, 46, 11);
+            c.beginPath();
+            c.arc(0, -16, 44, Math.PI * 1.04, Math.PI * 1.96);
+            c.closePath();
+            c.fill();
+            roundRect(c, 8, -26, 46, 9, 4);
+            c.fill();
+          } else {
+            c.fillStyle = hairColor;
+            c.beginPath();
+            c.arc(-3, -10, 45, Math.PI * 0.88, Math.PI * 1.86);
+            c.quadraticCurveTo(8, -28, -20, -21);
+            if (hairStyle === 'long') {
+              c.lineTo(-24, 34);
+              c.quadraticCurveTo(-40, 38, -46, 20);
+            } else {
+              c.quadraticCurveTo(-34, -12, -41, 6);
+            }
+            c.closePath();
+            c.fill();
+
+            if (hairStyle === 'spiky') {
+              c.beginPath();
+              c.moveTo(-28, -40);
+              c.lineTo(-14, -62);
+              c.lineTo(1, -46);
+              c.lineTo(17, -60);
+              c.lineTo(34, -32);
+              c.quadraticCurveTo(6, -36, -28, -40);
+              c.closePath();
+              c.fill();
+            }
           }
         }
 
         // Bochechas
         c.fillStyle = 'rgba(244, 114, 140, 0.24)';
-        c.beginPath(); c.ellipse(-2, 10, 8, 5, 0, 0, Math.PI * 2); c.ellipse(30, 10, 8, 5, 0, 0, Math.PI * 2); c.fill();
+        c.beginPath(); c.ellipse(-2, 11, 8, 5, 0, 0, Math.PI * 2); c.ellipse(30, 11, 8, 5, 0, 0, Math.PI * 2); c.fill();
 
         // Olhos com brilho + piscada automática
         const blink = mood !== 'shocked' && ((t % 3.1) > 2.97);
-        const eyeY = -4;
+        const eyeY = -3;
         const eyes = [4, 26];
         const eyeR = mood === 'shocked' ? 9.5 : 7.5;
         eyes.forEach((ex) => {
@@ -4628,11 +4838,11 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
           }
         });
 
-        // Sobrancelhas expressivas
-        c.strokeStyle = hairColor; c.lineWidth = 4; c.lineCap = 'round';
+        // Sobrancelhas expressivas (bem visíveis abaixo da linha do cabelo)
+        c.strokeStyle = hairColor; c.lineWidth = 3.8; c.lineCap = 'round';
         eyes.forEach((ex, idx) => {
-          const y1 = eyeY - 14 + (mood === 'angry' ? (idx ? -3 : 3) : (mood === 'sad' ? (idx ? 3 : -3) : (mood === 'shocked' ? -5 : 0)));
-          const y2 = eyeY - 14 + (mood === 'angry' ? (idx ? 3 : -3) : (mood === 'sad' ? (idx ? -3 : 3) : (mood === 'shocked' ? -5 : 0)));
+          const y1 = eyeY - 13 + (mood === 'angry' ? (idx ? -3 : 3) : (mood === 'sad' ? (idx ? 3 : -3) : (mood === 'shocked' ? -4 : 0)));
+          const y2 = eyeY - 13 + (mood === 'angry' ? (idx ? 3 : -3) : (mood === 'sad' ? (idx ? -3 : 3) : (mood === 'shocked' ? -4 : 0)));
           c.beginPath(); c.moveTo(ex - 7, y1); c.lineTo(ex + 7, y2); c.stroke();
         });
 
@@ -4641,16 +4851,16 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
         const talkOpen = talking ? (0.35 + Math.abs(Math.sin(t * 16)) * 0.65) : 0;
         if (mood === 'shocked') {
           c.fillStyle = '#7f1d1d';
-          c.beginPath(); c.ellipse(15, 19, 9, 12, 0, 0, Math.PI * 2); c.fill(); c.stroke();
+          c.beginPath(); c.ellipse(15, 20, 9, 12, 0, 0, Math.PI * 2); c.fill(); c.stroke();
         } else if (mood === 'excited' || talkOpen > 0.5) {
           c.fillStyle = '#991b1b';
-          c.beginPath(); c.arc(15, 14, 12, 0, Math.PI); c.closePath(); c.fill(); c.stroke();
+          c.beginPath(); c.arc(15, 15, 12, 0, Math.PI); c.closePath(); c.fill(); c.stroke();
         } else if (mood === 'sad' || mood === 'angry') {
-          c.beginPath(); c.arc(15, 25, 11, Math.PI * 1.15, Math.PI * 1.85); c.stroke();
+          c.beginPath(); c.arc(15, 26, 11, Math.PI * 1.15, Math.PI * 1.85); c.stroke();
         } else if (mood === 'confused' || mood === 'neutral') {
-          c.beginPath(); c.moveTo(6, 18); c.lineTo(24, 16); c.stroke();
+          c.beginPath(); c.moveTo(6, 19); c.lineTo(24, 17); c.stroke();
         } else {
-          c.beginPath(); c.arc(15, 12, 12, 0.15, Math.PI - 0.15); c.stroke();
+          c.beginPath(); c.arc(15, 13, 12, 0.15, Math.PI - 0.15); c.stroke();
         }
         c.restore();
 
@@ -4814,7 +5024,7 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
        * Valida e compila um objeto JSON (Formato A ou Formato B).
        * Lança Error descritivo em caso de problema de estrutura ou sintaxe JS.
        */
-      function compileProject(rawInput, existingId = null) {
+     function compileProject(rawInput, existingId = null) {
         if (!rawInput || typeof rawInput !== 'object' || Array.isArray(rawInput)) {
           throw new Error('O JSON raiz precisa ser um objeto { ... }.');
         }
@@ -4867,7 +5077,6 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
             const segStart = cursor;
             const segEnd = cursor + segDur;
 
-            // Subtítulos do segmento
             if (Array.isArray(seg.subtitles)) {
               seg.subtitles.forEach((sub) => {
                 if (sub && typeof sub.text === 'string' && Number.isFinite(Number(sub.start)) && Number.isFinite(Number(sub.end))) {
@@ -4881,21 +5090,32 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
               });
             }
 
-            // Sons do segmento
             if (Array.isArray(seg.soundTriggers)) {
               seg.soundTriggers.forEach((tr) => {
                 const compiledTr = compileSoundTrigger(tr, segStart);
-                if (compiledTr) globalSoundTriggers.push(compiledTr);
+                if (compiledTr) {
+                  compiledTr.baseTime = compiledTr.time;
+                  compiledTr.segIndex = idx;
+                  compiledTr.localTime = Math.max(0, compiledTr.time - segStart);
+                  globalSoundTriggers.push(compiledTr);
+                }
               });
             }
 
-            // Cenas do segmento (ou o próprio segmento como card na timeline)
             if (Array.isArray(seg.scenes) && seg.scenes.length > 0) {
               seg.scenes.forEach((sc) => {
+                const ls = clamp(Number(sc.start) || 0, 0, segDur);
+                const le = clamp(Number(sc.end) || segDur, 0, segDur);
                 scenes.push({
                   name: String(sc.name || segName),
-                  start: segStart + clamp(Number(sc.start) || 0, 0, segDur),
-                  end: segStart + clamp(Number(sc.end) || segDur, 0, segDur),
+                  start: segStart + ls,
+                  end: segStart + le,
+                  baseStart: segStart + ls,
+                  baseEnd: segStart + le,
+                  localStart: ls,
+                  localEnd: le,
+                  segIndex: idx,
+                  isFullSeg: false,
                   cameraLabel: String(sc.cameraLabel || segCam)
                 });
               });
@@ -4904,6 +5124,12 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
                 name: segName,
                 start: segStart,
                 end: segEnd,
+                baseStart: segStart,
+                baseEnd: segEnd,
+                localStart: 0,
+                localEnd: segDur,
+                segIndex: idx,
+                isFullSeg: true,
                 cameraLabel: segCam
               });
             }
@@ -4913,6 +5139,9 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
               start: segStart,
               end: segEnd,
               duration: segDur,
+              baseStart: segStart,
+              baseEnd: segEnd,
+              baseDuration: segDur,
               cameraLabel: segCam,
               transitionIn,
               renderFn
@@ -4939,6 +5168,9 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
             start: 0,
             end: dur,
             duration: dur,
+            baseStart: 0,
+            baseEnd: dur,
+            baseDuration: dur,
             cameraLabel: 'CAM · 1.00×',
             transitionIn: 'cut',
             renderFn
@@ -4946,15 +5178,34 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
 
           if (Array.isArray(rawInput.scenes) && rawInput.scenes.length > 0) {
             rawInput.scenes.forEach((sc, i) => {
+              const ls = clamp(Number(sc.start) || 0, 0, dur);
+              const le = clamp(Number(sc.end) || dur, 0, dur);
               scenes.push({
                 name: String(sc.name || `Cena ${i + 1}`),
-                start: clamp(Number(sc.start) || 0, 0, dur),
-                end: clamp(Number(sc.end) || dur, 0, dur),
+                start: ls,
+                end: le,
+                baseStart: ls,
+                baseEnd: le,
+                localStart: ls,
+                localEnd: le,
+                segIndex: 0,
+                isFullSeg: false,
                 cameraLabel: String(sc.cameraLabel || 'CAM · 1.00×')
               });
             });
           } else {
-            scenes.push({ name: title, start: 0, end: dur, cameraLabel: 'CAM · 1.00×' });
+            scenes.push({
+              name: title,
+              start: 0,
+              end: dur,
+              baseStart: 0,
+              baseEnd: dur,
+              localStart: 0,
+              localEnd: dur,
+              segIndex: 0,
+              isFullSeg: true,
+              cameraLabel: 'CAM · 1.00×'
+            });
           }
 
           if (Array.isArray(rawInput.subtitles)) {
@@ -4973,7 +5224,12 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
           if (Array.isArray(rawInput.soundTriggers)) {
             rawInput.soundTriggers.forEach((tr) => {
               const compiledTr = compileSoundTrigger(tr, 0);
-              if (compiledTr) globalSoundTriggers.push(compiledTr);
+              if (compiledTr) {
+                compiledTr.baseTime = compiledTr.time;
+                compiledTr.segIndex = 0;
+                compiledTr.localTime = compiledTr.time;
+                globalSoundTriggers.push(compiledTr);
+              }
             });
           }
 
@@ -4984,38 +5240,118 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
           throw new Error(`A duração total (${cursor.toFixed(1)}s) ultrapassa o limite máximo de ${MAX_DURATION}s.`);
         }
 
+        const findSegIndexForTime = (tSec) => {
+          for (let i = 0; i < compiledSegments.length; i++) {
+            if (tSec < compiledSegments[i].end - 0.001 || i === compiledSegments.length - 1) return i;
+          }
+          return 0;
+        };
+
+        // Sons da raiz em Formato B (se houver)
+        if (isFormatB && Array.isArray(rawInput.soundTriggers)) {
+          rawInput.soundTriggers.forEach((tr) => {
+            const compiledTr = compileSoundTrigger(tr, 0);
+            if (compiledTr) {
+              const sIdx = findSegIndexForTime(compiledTr.time);
+              compiledTr.baseTime = compiledTr.time;
+              compiledTr.segIndex = sIdx;
+              compiledTr.localTime = Math.max(0, compiledTr.time - compiledSegments[sIdx].start);
+              globalSoundTriggers.push(compiledTr);
+            }
+          });
+        }
         globalSoundTriggers.sort((a, b) => a.time - b.time);
 
         const rawClone = JSON.parse(JSON.stringify(rawInput));
         const id = existingId || rawClone.id || ('proj-' + Date.now() + '-' + Math.floor(Math.random() * 10000));
         rawClone.id = id;
 
-        if (rawInput.music) compiledMusicNotes.push(...compileMusicBlock(rawInput.music, 0, cursor));
+        if (rawInput.music) {
+          compileMusicBlock(rawInput.music, 0, cursor).forEach((n) => {
+            n.baseTime = n.time;
+            n.segIndex = -1;
+            n.localTime = n.time;
+            compiledMusicNotes.push(n);
+          });
+        }
         if (Array.isArray(rawInput.ambience)) {
-          rawInput.ambience.forEach((a) => { const c = compileAmbienceItem(a, 0, cursor); if (c) ambienceLayers.push(c); });
+          rawInput.ambience.forEach((a) => {
+            const c = compileAmbienceItem(a, 0, cursor);
+            if (c) {
+              const sIdx = findSegIndexForTime(c.start);
+              c.baseStart = c.start;
+              c.baseEnd = c.end;
+              c.coversFull = c.end >= cursor - 0.15;
+              c.segIndex = c.coversFull ? -1 : sIdx;
+              c.localStart = Math.max(0, c.start - compiledSegments[sIdx].start);
+              c.localEnd = Math.max(c.localStart + 0.1, c.end - compiledSegments[sIdx].start);
+              ambienceLayers.push(c);
+            }
+          });
         }
         if (Array.isArray(rawInput.narration)) {
           rawInput.narration.forEach((n) => {
             if (n && typeof n.text === 'string' && n.text.trim()) {
-              narrationLines.push({ start: Math.max(0, Number(n.start) || 0), text: n.text.trim(), rate: n.rate, pitch: n.pitch, volume: n.volume, lang: n.lang });
+              const absStart = Math.max(0, Number(n.start) || 0);
+              const sIdx = findSegIndexForTime(absStart);
+              narrationLines.push({
+                start: absStart,
+                baseStart: absStart,
+                segIndex: sIdx,
+                localStart: Math.max(0, absStart - compiledSegments[sIdx].start),
+                text: n.text.trim(),
+                rate: n.rate,
+                pitch: n.pitch,
+                volume: n.volume,
+                lang: n.lang
+              });
             }
           });
         }
         if (isFormatB) {
           let segCursor = 0;
-          rawInput.segments.forEach((seg) => {
+          rawInput.segments.forEach((seg, idx) => {
             const sDur = Number(seg.duration) || 0;
-           if (seg.music) {
+            if (seg.music) {
               const mList = Array.isArray(seg.music) ? seg.music : [seg.music];
-              mList.forEach((m) => compiledMusicNotes.push(...compileMusicBlock(m, segCursor, segCursor + sDur)));
+              mList.forEach((m) => {
+                compileMusicBlock(m, segCursor, segCursor + sDur).forEach((n) => {
+                  n.baseTime = n.time;
+                  n.segIndex = idx;
+                  n.localTime = Math.max(0, n.time - segCursor);
+                  compiledMusicNotes.push(n);
+                });
+              });
             }
             if (Array.isArray(seg.ambience)) {
-              seg.ambience.forEach((a) => { const c = compileAmbienceItem(a, segCursor, sDur); if (c) ambienceLayers.push(c); });
+              seg.ambience.forEach((a) => {
+                const c = compileAmbienceItem(a, segCursor, sDur);
+                if (c) {
+                  c.baseStart = c.start;
+                  c.baseEnd = c.end;
+                  c.coversFull = c.start <= 0.05 && c.end >= cursor - 0.15;
+                  c.segIndex = c.coversFull ? -1 : idx;
+                  c.localStart = Math.max(0, c.start - segCursor);
+                  c.localEnd = Math.max(c.localStart + 0.1, c.end - segCursor);
+                  ambienceLayers.push(c);
+                }
+              });
             }
             if (Array.isArray(seg.narration)) {
               seg.narration.forEach((n) => {
                 if (n && typeof n.text === 'string' && n.text.trim()) {
-                  narrationLines.push({ start: segCursor + Math.max(0, Number(n.start) || 0), text: n.text.trim(), rate: n.rate, pitch: n.pitch, volume: n.volume, lang: n.lang });
+                  const localS = Math.max(0, Number(n.start) || 0);
+                  narrationLines.push({
+                    start: segCursor + localS,
+                    baseStart: segCursor + localS,
+                    segIndex: idx,
+                    localStart: localS,
+                    text: n.text.trim(),
+                    rate: n.rate,
+                    pitch: n.pitch,
+                    volume: n.volume,
+                    lang: n.lang
+                  });
                 }
               });
             }
@@ -5025,20 +5361,15 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
         compiledMusicNotes.sort((a, b) => a.time - b.time);
         narrationLines.sort((a, b) => a.start - b.start);
         narrationLines.forEach((ln, i) => {
-          
-  ln.maxDur = (i + 1 < narrationLines.length ? narrationLines[i + 1].start : cursor) - ln.start;
-});
+          ln.maxDur = (i + 1 < narrationLines.length ? narrationLines[i + 1].start : cursor) - ln.start;
+        });
+
         const hasSyncedNarrationSubs = narrationLines.length > 0;
         if (hasSyncedNarrationSubs) {
           globalSubtitles.length = 0;
-          narrationLines.forEach((ln) => {
-            globalSubtitles.push({
-              start: ln.start,
-              end: ln.start + Math.max(0.5, ln.maxDur - 0.06),
-              speakEnd: ln.start + Math.max(0.5, ln.maxDur - 0.15),
-              text: ln.text,
-              options: {}
-            });
+          narrationLines.forEach((ln, i) => {
+            const nextStart = i + 1 < narrationLines.length ? narrationLines[i + 1].start : cursor;
+            globalSubtitles.push(...buildWeightedSubtitleChunks(ln.text, ln.start, ln.start + Math.max(0.5, ln.maxDur - 0.12), nextStart - 0.03));
           });
         }
 
@@ -5049,6 +5380,7 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
           description,
           subtitlePosition,
           totalDuration: cursor,
+          baseTotalDuration: cursor,
           mode: isFormatB ? 'segments' : 'single',
           segments: compiledSegments,
           scenes,
@@ -5060,7 +5392,6 @@ const readP = options.readProgress !== undefined ? clamp(options.readProgress, 0
           globalSubtitles
         };
       }
-
       /**
        * Converte um JSON (Formato A ou B) em um array de segmentos (Formato B)
        * para permitir anexar cenas sequencialmente.
@@ -6768,7 +7099,7 @@ renderWatermark(ctx);
           '5. Atalhos de SFX opcionais: woodKnock, footstep, pop, whoosh, chime, whistle, bark, meow, boing, impact, crash, applause, sadTrombone, laser, splash, doorCreak, bell, alert.',
           '',
           'REGRAS VISUAIS 9:16 (1080x1920):',
-          '- PERSONAGENS DETALHADOS OBRIGATÓRIOS: SEMPRE use h.drawCharacter(ctx, x, yPésNoChão, { t, scale, facing, pose, mood, shirt, pants, skin, hairColor, hairStyle, prop, talking }) para desenhar pessoas! Poses: idle, walk, run, celebrate, paint, phone, shock, sit. Moods: happy, excited, neutral, confused, shocked, sad, angry. Props: none, money, card, phone, roller, bag. NUNCA desenhe bonecos sem olhos/rosto.',
+          '- PERSONAGENS DETALHADOS OBRIGATÓRIOS: SEMPRE use h.drawCharacter(ctx, x, yPésNoChão, { t, scale, facing, pose, mood, shirt, pants, skin, hairColor, hairStyle, prop, talking, chair }) para desenhar pessoas! Poses: idle, walk, run, celebrate, paint, phone, shock, sit (gera cadeira automática; passe chair:false em motos/sofás). Moods: happy, excited, neutral, confused, shocked, sad, angry. Props: none, money, card, phone, roller, bag. Escreva números/siglas normalmente na narração (ex: GTA 6, PS5, 25 de Março).',
           '- ZONA PROIBIDA DE TEXTO/CENÁRIO: NÃO coloque textos soltos, placas ou relógios acima de Y=460 (essa área pertence às legendas e marca d\'água). Use NO MÁXIMO 1 placa/elemento textual por cena para não poluir.',
           '- SINCRONIA PERFEITA DE NARRAÇÃO: calcule a duração de cada segmento pela fala (~2.4 palavras por segundo + 0.8s de respiro). Exemplo: frase de 12 palavras = segmento de 5.5s a 6.0s. NUNCA coloque frase longa em cena de 3s!',
           '- Soma das durações até 60s. renderBody 100% determinístico em `t` (zero imagens/URLs externas).',
