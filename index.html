@@ -2205,7 +2205,7 @@
             <select class="voice-select" id="voiceSelect" aria-label="Voz do narrador">
               <option value="">Voz automática (pt-BR)</option>
             </select>
-            <button type="button" class="btn-voice-sm active" id="btnGenNeuralVoice" title="Sintetiza a narração neural PT-BR para tocar e sair no vídeo exportado">✦ Gerar Voz</button>
+            <button type="button" class="btn-voice-sm" id="btnGenNeuralVoice" title="Regerar voz neural PT-BR">↻ Regerar</button>
             <button type="button" class="btn-voice-sm" id="btnRecordVoice" title="Grava sua voz pelo microfone acompanhando o vídeo para sair no arquivo exportado">Gravar Mic</button>
             <button type="button" class="btn-voice-sm" id="btnUploadVoice" title="Importar narração .mp3/.wav para sair no vídeo exportado">Subir Voz</button>
             <input type="file" id="voiceFileInput" accept="audio/*" style="display:none;" />
@@ -2227,7 +2227,7 @@
             </label>
           </div>
           <div class="voice-status-line">
-            <span id="voiceTrackStatus">Pronto! A voz neural é gerada automaticamente ao clicar em "✦ Gerar Voz" ou "Exportar".</span>
+            <span id="voiceTrackStatus">Voz TikTok (Neural) gerada automaticamente ao carregar o vídeo — ou grave a sua no Mic.</span>
           </div>
         </div>
 
@@ -2290,18 +2290,31 @@
             </label>
           </div>
 
-          <!-- Botão Principal: Exportar Vídeo 9:16 -->
-          <button type="button" class="btn btn-export" id="btnExport">
-            <span class="export-progress-bg" id="exportProgressBg"></span>
-            <span class="btn-export-content">
+<!-- Botões Principais: Exportar & Compartilhar -->
+          <div class="export-actions-row">
+            <button type="button" class="btn btn-export" id="btnExport">
+              <span class="export-progress-bg" id="exportProgressBg"></span>
+              <span class="btn-export-content">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                  <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                  <polyline points="7 10 12 15 17 10"></polyline>
+                  <line x1="12" y1="15" x2="12" y2="3"></line>
+                </svg>
+                <span id="exportText">Exportar Vídeo 9:16 (.mp4)</span>
+              </span>
+            </button>
+
+            <button type="button" class="btn btn-share" id="btnShareVideo" title="Compartilhar direto no WhatsApp, Telegram, Instagram ou TikTok">
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                <polyline points="7 10 12 15 17 10"></polyline>
-                <line x1="12" y1="15" x2="12" y2="3"></line>
+                <circle cx="18" cy="5" r="3"></circle>
+                <circle cx="6" cy="12" r="3"></circle>
+                <circle cx="18" cy="19" r="3"></circle>
+                <line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line>
+                <line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line>
               </svg>
-              <span id="exportText">Exportar Vídeo 9:16 (.webm)</span>
-            </span>
-          </button>
+              <span id="shareVideoText">Compartilhar</span>
+           </button>
+          </div>
         </div>
       </div>
     </section>
@@ -3010,6 +3023,13 @@
       let wasPlayingBeforeRecord = false;
       let recordedChunks = [];
       let supportedMp4Mime = null;
+      const isMobileDevice = /Android|iPhone|iPad|iPod|Mobile/i.test(navigator.userAgent || '') || (window.innerWidth <= 900 && 'ontouchstart' in window);
+      let lastExportedFile = null;
+      let wakeLockSentinel = null;
+      let voiceGenToken = 0;
+      let isGeneratingVoice = false;
+      const btnShareVideo = document.getElementById('btnShareVideo');
+      const shareVideoText = document.getElementById('shareVideoText');
       let activeGuideTab = 'new'; // 'new' | 'continue'
 
       // Presets de Qualidade / Peso (FPS e bitrate equilibrados para Reels/WhatsApp)
@@ -3239,8 +3259,8 @@ let audioCtx = null;
             }
           }
 
-          if (audioCtx.state === 'suspended') {
-            await audioCtx.resume();
+if (audioCtx.state === 'suspended') {
+            await Promise.race([audioCtx.resume(), new Promise((r) => setTimeout(r, 150))]);
           }
           return true;
         } catch (err) {
@@ -3744,41 +3764,150 @@ let audioCtx = null;
       // 5D. NARRADOR (WEB SPEECH API LIVE + FAIXA DE VOZ EXPORTÁVEL MIC/MP3)
       // =======================================================================
 function speakNarrationLine(line) {
+        // Nunca usa narrador robótico padrão no site publicado (apenas fallback local em file://)
+        if (location.protocol !== 'file:') return;
         if (!narrationEnabled || isMuted || customVoiceBuffer || isRecording || voiceVolume <= 0.01) return;
         if (!('speechSynthesis' in window) || !line || !line.text) return;
         try {
           window.speechSynthesis.cancel();
-          const words = line.text.split(/\s+/).filter(Boolean).length;
-          const autoRate = line.maxDur ? clamp((words / 2.6) / Math.max(1.4, line.maxDur - 0.25), 0.92, 1.45) : 1.0;
           const utt = new SpeechSynthesisUtterance(line.text);
           utt.lang = line.lang || 'pt-BR';
-          utt.rate = clamp(Math.max(Number(line.rate) || 1.0, autoRate), 0.65, 1.55);
+          utt.rate = clamp(Number(line.rate) || 1.0, 0.65, 1.55);
           utt.pitch = clamp(Number(line.pitch) || 1.0, 0.4, 1.8);
           utt.volume = clamp(voiceVolume * (Number(line.volume) || 1.0), 0.0, 1.0);
-          utt.onstart = () => setMusicDuck(true);
-          const releaseDuck = () => setTimeout(() => {
-            if (!window.speechSynthesis.speaking) setMusicDuck(false);
-          }, 140);
-          utt.onend = releaseDuck;
-          utt.onerror = releaseDuck;
-          const voices = window.speechSynthesis.getVoices() || [];
-          const chosen = voices.find((v) => /^pt(-BR)?/i.test(v.lang));
-          if (chosen) utt.voice = chosen;
           window.speechSynthesis.speak(utt);
         } catch (e) {}
       }
 
-      function ensureCustomVoicePlaying(atSec) {
-        if (!customVoiceBuffer || customVoiceNode || !audioCtx || !voiceBus) return;
-        if (atSec >= customVoiceBuffer.duration - 0.05) return;
+      async function generateServerlessVoiceTrack(silent = false) {
+        if (!activeProject || !activeProject.narrationLines || activeProject.narrationLines.length === 0) {
+          if (!silent) showToast('Este vídeo não possui falas. Você pode gravar no Mic!', 'amber');
+          return false;
+        }
+        if (location.protocol === 'file:') {
+          if (!silent) showToast('A voz TikTok automática funciona no site publicado na Vercel.', 'amber');
+          return false;
+        }
+
+        const myToken = ++voiceGenToken;
+        const targetProj = activeProject;
+        isGeneratingVoice = true;
+
+        await ensureAudioReady();
+        stopAllContinuousAudio();
+        if (btnGenNeuralVoice) { btnGenNeuralVoice.disabled = true; btnGenNeuralVoice.textContent = 'Gerando...'; }
+
         try {
-          const src = audioCtx.createBufferSource();
-          src.buffer = customVoiceBuffer;
-          src.connect(voiceBus);
-          src.onended = () => { if (customVoiceNode === src) customVoiceNode = null; };
-          src.start(0, Math.max(0, atSec));
-          customVoiceNode = src;
-        } catch (e) {}
+          const lines = targetProj.narrationLines;
+          const clips = new Array(lines.length);
+          let doneCount = 0;
+          voiceTrackStatus.textContent = `Gerando voz TikTok (0/${lines.length})...`;
+
+          // Sintetiza em lotes de 3 em paralelo (~3x mais rápido)
+          const BATCH = 3;
+          for (let startIdx = 0; startIdx < lines.length; startIdx += BATCH) {
+            const slice = lines.slice(startIdx, startIdx + BATCH);
+            await Promise.all(slice.map(async (ln, offset) => {
+              const i = startIdx + offset;
+              const words = ln.text.split(/\s+/).filter(Boolean).length;
+              const avail = Math.max(1.5, (ln.maxDur || 4.0) - 0.25);
+              const estDur = words / 2.65;
+              const autoRateMult = estDur > avail ? clamp(estDur / avail, 1.0, 1.42) : 1.0;
+              const finalRate = Math.max(Number(ln.rate) || 1.0, autoRateMult);
+              const ratePct = Math.round((finalRate - 1.0) * 100);
+              const pitchHz = Math.round(((Number(ln.pitch) || 1.0) - 1.0) * 18);
+
+              const res = await fetch('/api/tts', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ text: ln.text, voice: selectedNeuralVoice, ratePct, pitchHz })
+              });
+              if (!res.ok) throw new Error(`HTTP ${res.status}`);
+              const ab = await res.arrayBuffer();
+              if (myToken !== voiceGenToken || activeProject !== targetProj) return;
+              const buf = await audioCtx.decodeAudioData(ab);
+              clips[i] = { start: ln.start, text: ln.text, buffer: buf };
+              doneCount++;
+              voiceTrackStatus.textContent = `Gerando voz TikTok (${doneCount}/${lines.length})...`;
+            }));
+            if (myToken !== voiceGenToken || activeProject !== targetProj) return false;
+          }
+
+          const sr = clips[0].buffer.sampleRate;
+          let maxEnd = targetProj.totalDuration;
+          let cursorEnd = 0;
+          const placed = clips.map((c) => {
+            const actualStart = Math.max(c.start, cursorEnd);
+            const actualEnd = actualStart + c.buffer.duration;
+            cursorEnd = actualEnd + 0.08;
+            maxEnd = Math.max(maxEnd, cursorEnd);
+            return { start: actualStart, end: actualEnd, text: c.text, buffer: c.buffer };
+          });
+
+          const totalFrames = Math.ceil(maxEnd * sr);
+          const master = audioCtx.createBuffer(1, totalFrames, sr);
+          const out = master.getChannelData(0);
+          placed.forEach((p) => {
+            const src = p.buffer.getChannelData(0);
+            const off = Math.floor(p.start * sr);
+            for (let k = 0; k < src.length && off + k < totalFrames; k++) {
+              out[off + k] = clamp(out[off + k] + src[k], -1, 1);
+            }
+          });
+
+          if (myToken !== voiceGenToken || activeProject !== targetProj) return false;
+
+          customVoiceBuffer = master;
+          voiceDuckWindows = placed.map((p) => ({ start: p.start, end: p.end }));
+          adjustProjectDurationForVoice(cursorEnd);
+          targetProj.globalSubtitles = placed.map((p, idx) => {
+            const nextStart = idx + 1 < placed.length ? placed[idx + 1].start : targetProj.totalDuration;
+            return {
+              start: p.start,
+              speakEnd: p.end,
+              end: Math.min(nextStart - 0.03, p.end + 0.25),
+              text: p.text,
+              options: {}
+            };
+          });
+          targetProj.hasSyncedNarrationSubs = true;
+          clearExportedFile();
+
+          if (btnClearVoice) btnClearVoice.style.display = 'inline-flex';
+          const shortName = (voiceSelect && voiceSelect.options[voiceSelect.selectedIndex])
+            ? voiceSelect.options[voiceSelect.selectedIndex].text.split(' (')[0]
+            : 'Neural';
+          voiceTrackStatus.textContent = `✓ Voz ${shortName} pronta (${clips.length} falas) — inclusa no vídeo!`;
+          if (!silent) showToast(`Voz ${shortName} pronta e sincronizada!`);
+          return true;
+        } catch (err) {
+          if (myToken === voiceGenToken) {
+            voiceTrackStatus.textContent = 'Não foi possível gerar a voz automática — toque em "↻ Regerar" ou grave no Mic.';
+            if (!silent) showToast('Falha ao gerar voz neural. Tente novamente.', 'error');
+          }
+          return false;
+        } finally {
+          if (myToken === voiceGenToken) {
+            isGeneratingVoice = false;
+            if (btnGenNeuralVoice) { btnGenNeuralVoice.disabled = false; btnGenNeuralVoice.textContent = '↻ Regerar'; }
+          }
+        }
+      }
+
+      async function autoPrepareVoiceAndPlay(shouldPlay) {
+        const proj = activeProject;
+        if (!proj) return;
+        const needsVoice = narrationEnabled && proj.narrationLines && proj.narrationLines.length > 0 && !customVoiceBuffer && location.protocol !== 'file:';
+        if (needsVoice) {
+          await generateServerlessVoiceTrack(true);
+        }
+        if (shouldPlay && activeProject === proj && !isRecording) {
+          hideStartOverlay();
+          currentTime = 0;
+          prevTime = -0.001;
+          isPlaying = true;
+          updatePlayPauseButton();
+        }
       }
       function adjustProjectDurationForVoice(voiceEndSec) {
         if (!activeProject || !activeProject.segments || !activeProject.segments.length) return;
@@ -3946,10 +4075,10 @@ function speakNarrationLine(line) {
         if (volVoiceSlider) volVoiceSlider.addEventListener('input', () => { voiceVolume = Number(volVoiceSlider.value) / 100; syncMixUI(); persistMix(); });
         if (volMusicSlider) volMusicSlider.addEventListener('input', () => { musicVolume = Number(volMusicSlider.value) / 100; syncMixUI(); persistMix(); });
         if (volSfxSlider) volSfxSlider.addEventListener('input', () => { sfxVolume = Number(volSfxSlider.value) / 100; syncMixUI(); persistMix(); });
-        if ('speechSynthesis' in window) {
+       
           populateVoiceList();
          
-        }
+      
         if (btnNarrationToggle) {
           btnNarrationToggle.addEventListener('click', () => {
             narrationEnabled = !narrationEnabled;
@@ -3964,7 +4093,11 @@ function speakNarrationLine(line) {
             try { localStorage.setItem('cinecode_neural_voice_v1', selectedNeuralVoice); } catch (e) {}
             customVoiceBuffer = null;
             voiceDuckWindows = [];
+            clearExportedFile();
             if (btnClearVoice) btnClearVoice.style.display = 'none';
+            if (narrationEnabled && activeProject && activeProject.narrationLines && activeProject.narrationLines.length) {
+              generateServerlessVoiceTrack(false);
+            }
           });
         }
         if (btnGenNeuralVoice) {
@@ -5547,14 +5680,22 @@ renderWatermark(ctx);
           upsertProjectInLibrary(compiled.raw);
         }
 
-        if (autoPlay) {
-          hideStartOverlay();
-          isPlaying = true;
-        } else {
+  const hasAutoVoice = narrationEnabled && compiled.narrationLines && compiled.narrationLines.length > 0 && location.protocol !== 'file:';
+        if (hasAutoVoice) {
           isPlaying = false;
+          updatePlayPauseButton();
+          if (voiceTrackStatus) voiceTrackStatus.textContent = 'Gerando voz TikTok automaticamente...';
+          autoPrepareVoiceAndPlay(autoPlay);
+        } else {
+          if (voiceTrackStatus) voiceTrackStatus.textContent = 'Este vídeo não tem falas. Você pode gravar a sua voz no Mic!';
+          if (autoPlay) {
+            hideStartOverlay();
+            isPlaying = true;
+          } else {
+            isPlaying = false;
+          }
+          updatePlayPauseButton();
         }
-        updatePlayPauseButton();
-
         renderFrame(currentTime);
         updatePlayerUI();
       }
@@ -6561,23 +6702,27 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
       const btnWizardBackTo2 = document.getElementById('btnWizardBackTo2');
 
       function copyTextSafely(text) {
-        try {
-          const temp = document.createElement('textarea');
-          temp.value = text;
-          temp.setAttribute('readonly', '');
-          temp.style.position = 'fixed';
-          temp.style.top = '-9999px';
-          temp.style.opacity = '0';
-          document.body.appendChild(temp);
-          temp.focus();
-          temp.select();
-          const ok = document.execCommand('copy');
-          document.body.removeChild(temp);
-          return ok;
-        } catch (err) {
-          return false;
-        }
-      }
+     if (navigator.clipboard && typeof navigator.clipboard.writeText === 'function') {
+       navigator.clipboard.writeText(text).catch(() => {});
+       return true;
+     }
+     try {
+       const temp = document.createElement('textarea');
+       temp.value = text;
+       temp.setAttribute('readonly', '');
+       temp.style.position = 'fixed';
+       temp.style.top = '-9999px';
+       temp.style.opacity = '0';
+       document.body.appendChild(temp);
+       temp.focus();
+       temp.select();
+       const ok = document.execCommand('copy');
+       document.body.removeChild(temp);
+       return ok;
+     } catch (err) {
+       return false;
+     }
+   }
 
       function buildCreateVideoPrompt(userIdea = '') {
         const ideaText = String(userIdea || '').trim() || '[COLE SUA IDEIA AQUI]';
