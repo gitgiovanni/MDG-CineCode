@@ -3779,6 +3779,47 @@ function speakNarrationLine(line) {
         } catch (e) {}
       }
 
+      function ensureCustomVoicePlaying(atSec) {
+        if (!customVoiceBuffer || customVoiceNode || !audioCtx || !voiceBus) return;
+        if (atSec >= customVoiceBuffer.duration - 0.05) return;
+        try {
+          const src = audioCtx.createBufferSource();
+          src.buffer = customVoiceBuffer;
+          src.connect(voiceBus);
+          src.onended = () => { if (customVoiceNode === src) customVoiceNode = null; };
+          src.start(0, Math.max(0, atSec));
+          customVoiceNode = src;
+        } catch (e) {}
+      }
+
+      function adjustProjectDurationForVoice(voiceEndSec) {
+        if (!activeProject || !activeProject.segments || !activeProject.segments.length) return;
+        if (activeProject.baseTotalDuration === undefined) {
+          activeProject.baseTotalDuration = activeProject.totalDuration;
+          (activeProject.globalSubtitles || []).forEach((s) => { s._baseEnd = s.end; });
+        }
+        const baseDur = activeProject.baseTotalDuration;
+        const targetDur = clamp(Math.max(baseDur, (Number(voiceEndSec) || 0) + 0.9), baseDur, MAX_DURATION);
+        if (Math.abs(targetDur - activeProject.totalDuration) < 0.05) return;
+
+        activeProject.totalDuration = targetDur;
+        const lastSeg = activeProject.segments[activeProject.segments.length - 1];
+        lastSeg.end = targetDur;
+        lastSeg.duration = Math.max(0.5, targetDur - lastSeg.start);
+
+        if (activeProject.scenes && activeProject.scenes.length) {
+          activeProject.scenes[activeProject.scenes.length - 1].end = targetDur;
+        }
+        (activeProject.globalSubtitles || []).forEach((s) => {
+          if (s._baseEnd >= baseDur - 0.5) s.end = Math.max(s._baseEnd, targetDur - 0.3);
+        });
+
+        durationEngineBadge.textContent = `${targetDur.toFixed(1)}s · JSON Engine`;
+        scrubber.setAttribute('aria-valuemax', targetDur.toFixed(1));
+        buildTimelineMarkersAndScenes();
+        updatePlayerUI();
+      }
+
       async function generateServerlessVoiceTrack(silent = false) {
         if (!activeProject || !activeProject.narrationLines || activeProject.narrationLines.length === 0) {
           if (!silent) showToast('Este vídeo não possui falas. Você pode gravar no Mic!', 'amber');
@@ -3798,6 +3839,7 @@ function speakNarrationLine(line) {
         if (btnGenNeuralVoice) { btnGenNeuralVoice.disabled = true; btnGenNeuralVoice.textContent = 'Gerando...'; }
 
         try {
+          if (!audioCtx) throw new Error('Áudio aguardando interação na tela.');
           const lines = targetProj.narrationLines;
           const clips = new Array(lines.length);
           let doneCount = 0;
@@ -3882,7 +3924,7 @@ function speakNarrationLine(line) {
           return true;
         } catch (err) {
           if (myToken === voiceGenToken) {
-            voiceTrackStatus.textContent = 'Não foi possível gerar a voz automática — toque em "↻ Regerar" ou grave no Mic.';
+            voiceTrackStatus.textContent = 'Toque em "Assistir com Som" ou "↻ Regerar" para gerar a voz TikTok.';
             if (!silent) showToast('Falha ao gerar voz neural. Tente novamente.', 'error');
           }
           return false;
@@ -3909,125 +3951,6 @@ function speakNarrationLine(line) {
           updatePlayPauseButton();
         }
       }
-      function adjustProjectDurationForVoice(voiceEndSec) {
-        if (!activeProject || !activeProject.segments || !activeProject.segments.length) return;
-        if (activeProject.baseTotalDuration === undefined) {
-          activeProject.baseTotalDuration = activeProject.totalDuration;
-          (activeProject.globalSubtitles || []).forEach((s) => { s._baseEnd = s.end; });
-        }
-        const baseDur = activeProject.baseTotalDuration;
-        const targetDur = clamp(Math.max(baseDur, (Number(voiceEndSec) || 0) + 0.9), baseDur, MAX_DURATION);
-        if (Math.abs(targetDur - activeProject.totalDuration) < 0.05) return;
-
-        activeProject.totalDuration = targetDur;
-        const lastSeg = activeProject.segments[activeProject.segments.length - 1];
-        lastSeg.end = targetDur;
-        lastSeg.duration = Math.max(0.5, targetDur - lastSeg.start);
-
-        if (activeProject.scenes && activeProject.scenes.length) {
-          activeProject.scenes[activeProject.scenes.length - 1].end = targetDur;
-        }
-        (activeProject.globalSubtitles || []).forEach((s) => {
-          if (s._baseEnd >= baseDur - 0.5) s.end = Math.max(s._baseEnd, targetDur - 0.3);
-        });
-
-        durationEngineBadge.textContent = `${targetDur.toFixed(1)}s · JSON Engine`;
-        scrubber.setAttribute('aria-valuemax', targetDur.toFixed(1));
-        buildTimelineMarkersAndScenes();
-        updatePlayerUI();
-      }
-      async function generateServerlessVoiceTrack(silent = false) {
-        if (!activeProject || !activeProject.narrationLines || activeProject.narrationLines.length === 0) {
-          if (!silent) showToast('Este vídeo não possui falas em "narration".', 'amber');
-          return false;
-        }
-        if (location.protocol === 'file:') {
-          if (!silent) showToast('A voz neural funciona no site publicado na Vercel (não via file://).', 'amber');
-          return false;
-        }
-
-        await ensureAudioReady();
-        stopAllContinuousAudio();
-        if (btnGenNeuralVoice) { btnGenNeuralVoice.disabled = true; btnGenNeuralVoice.textContent = 'Gerando...'; }
-
-        try {
-          const lines = activeProject.narrationLines;
-          const clips = [];
-
-          for (let i = 0; i < lines.length; i++) {
-            const ln = lines[i];
-            voiceTrackStatus.textContent = `Sintetizando fala ${i + 1}/${lines.length}...`;
-
-            // Ajusta velocidade automaticamente para caber na cena sem atrasar a fila
-            const words = ln.text.split(/\s+/).filter(Boolean).length;
-            const avail = Math.max(1.5, (ln.maxDur || 4.0) - 0.25);
-            const estDur = words / 2.65;
-            const autoRateMult = estDur > avail ? clamp(estDur / avail, 1.0, 1.42) : 1.0;
-            const finalRate = Math.max(Number(ln.rate) || 1.0, autoRateMult);
-            const ratePct = Math.round((finalRate - 1.0) * 100);
-            const pitchHz = Math.round(((Number(ln.pitch) || 1.0) - 1.0) * 18);
-
-            const res = await fetch('/api/tts', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ text: ln.text, voice: selectedNeuralVoice, ratePct, pitchHz })
-            });
-            if (!res.ok) throw new Error(`HTTP ${res.status}`);
-            const ab = await res.arrayBuffer();
-            const buf = await audioCtx.decodeAudioData(ab);
-            clips.push({ start: ln.start, text: ln.text, buffer: buf });
-          }
-
-          // Monta a faixa única sincronizada na timeline + janelas de auto-ducking
-          const sr = clips[0].buffer.sampleRate;
-          let maxEnd = activeProject.totalDuration;
-          let cursorEnd = 0;
-          const placed = clips.map((c) => {
-            const actualStart = Math.max(c.start, cursorEnd);
-            const actualEnd = actualStart + c.buffer.duration;
-            cursorEnd = actualEnd + 0.08;
-            maxEnd = Math.max(maxEnd, cursorEnd);
-            return { start: actualStart, end: actualEnd, text: c.text, buffer: c.buffer };
-          });
-
-          const totalFrames = Math.ceil(maxEnd * sr);
-          const master = audioCtx.createBuffer(1, totalFrames, sr);
-          const out = master.getChannelData(0);
-          placed.forEach((p) => {
-            const src = p.buffer.getChannelData(0);
-            const off = Math.floor(p.start * sr);
-            for (let k = 0; k < src.length && off + k < totalFrames; k++) {
-              out[off + k] = clamp(out[off + k] + src[k], -1, 1);
-            }
-          });
-
-          customVoiceBuffer = master;
-          voiceDuckWindows = placed.map((p) => ({ start: p.start, end: p.end }));
-          adjustProjectDurationForVoice(cursorEnd);
-          activeProject.globalSubtitles = placed.map((p, idx) => {
-         const nextStart = idx + 1 < placed.length ? placed[idx + 1].start : activeProject.totalDuration;
-         return {
-           start: p.start,
-           speakEnd: p.end,
-           end: Math.min(nextStart - 0.03, p.end + 0.25),
-           text: p.text,
-           options: {}
-         };
-       });
-       activeProject.hasSyncedNarrationSubs = true;
-          btnClearVoice.style.display = 'inline-flex';
-          voiceTrackStatus.textContent = `Voz Neural pronta e sincronizada (${clips.length} falas) — sai no vídeo exportado!`;
-          if (!silent) showToast('Narração neural pronta! Já vai embutida no vídeo exportado.');
-          return true;
-        } catch (err) {
-          voiceTrackStatus.textContent = 'Rota /api/tts indisponível — usando TTS do navegador no preview.';
-          if (!silent) showToast('Não foi possível acessar /api/tts. Verifique o deploy na Vercel.', 'error');
-          return false;
-        } finally {
-          if (btnGenNeuralVoice) { btnGenNeuralVoice.disabled = false; btnGenNeuralVoice.textContent = '✦ Gerar Voz'; }
-        }
-      }
-
       function populateVoiceList() {
         if (!voiceSelect) return;
         const NEURAL_VOICES = [
@@ -5648,15 +5571,17 @@ renderWatermark(ctx);
         });
       }
 
-      function loadCompiledProject(compiled, options = {}) {
+     function loadCompiledProject(compiled, options = {}) {
         const { seekTo = 0, autoPlay = false, save = true } = options;
 
         clearRuntimeError();
         stopAllContinuousAudio();
+        voiceGenToken++;
+        isGeneratingVoice = false;
         customVoiceBuffer = null;
         voiceDuckWindows = [];
+        clearExportedFile();
         if (btnClearVoice) btnClearVoice.style.display = 'none';
-        if (voiceTrackStatus) voiceTrackStatus.textContent = 'Pronto! A voz neural é gerada automaticamente ao clicar em "✦ Gerar Voz" ou "Exportar".';
         activeProject = compiled;
         currentTime = clamp(seekTo, 0, compiled.totalDuration);
         prevTime = currentTime - 0.001;
@@ -5680,7 +5605,7 @@ renderWatermark(ctx);
           upsertProjectInLibrary(compiled.raw);
         }
 
-  const hasAutoVoice = narrationEnabled && compiled.narrationLines && compiled.narrationLines.length > 0 && location.protocol !== 'file:';
+        const hasAutoVoice = narrationEnabled && compiled.narrationLines && compiled.narrationLines.length > 0 && location.protocol !== 'file:';
         if (hasAutoVoice) {
           isPlaying = false;
           updatePlayPauseButton();
@@ -5699,7 +5624,6 @@ renderWatermark(ctx);
         renderFrame(currentTime);
         updatePlayerUI();
       }
-
       function updatePlayerUI() {
         if (!activeProject) return;
         const dur = activeProject.totalDuration;
@@ -6123,18 +6047,49 @@ renderWatermark(ctx);
         }
       }
 
+      function clearExportedFile() {
+        lastExportedFile = null;
+        if (btnShareVideo) {
+          btnShareVideo.classList.remove('ready-pulse');
+          if (shareVideoText) shareVideoText.textContent = 'Compartilhar';
+        }
+      }
+
+      function canShareVideoFile(file) {
+        try {
+          return Boolean(file && navigator.share && navigator.canShare && navigator.canShare({ files: [file] }));
+        } catch (e) {
+          return false;
+        }
+      }
+
+      async function requestScreenWakeLock() {
+        try {
+          if ('wakeLock' in navigator && navigator.wakeLock && !wakeLockSentinel) {
+            wakeLockSentinel = await navigator.wakeLock.request('screen');
+          }
+        } catch (e) {}
+      }
+
+      function releaseScreenWakeLock() {
+        try {
+          if (wakeLockSentinel) { wakeLockSentinel.release().catch(() => {}); wakeLockSentinel = null; }
+        } catch (e) { wakeLockSentinel = null; }
+      }
+
       function detectSupportedMp4MimeType() {
         if (typeof MediaRecorder === 'undefined') return null;
         const candidates = [
           'video/mp4;codecs=avc1.42E01E,mp4a.40.2',
           'video/mp4;codecs=avc1.4d002a,mp4a.40.2',
+          'video/mp4;codecs=avc1.640028,mp4a.40.2',
           'video/mp4;codecs=avc1,mp4a.40.2',
           'video/mp4'
         ];
         for (const mime of candidates) {
           try {
             if (MediaRecorder.isTypeSupported(mime)) return mime;
-          } catch (err) { /* ignora */ }
+          } catch (err) {}
         }
         return null;
       }
@@ -6151,7 +6106,7 @@ renderWatermark(ctx);
         for (const mime of candidates) {
           try {
             if (MediaRecorder.isTypeSupported(mime)) return mime;
-          } catch (err) { /* ignora */ }
+          } catch (err) {}
         }
         return '';
       }
@@ -6166,19 +6121,23 @@ renderWatermark(ctx);
         supportedMp4Mime = detectSupportedMp4MimeType();
         if (supportedMp4Mime) {
           exportMp4Option.disabled = false;
-          exportMp4Option.textContent = 'MP4 (Nativo)';
+          exportMp4Option.textContent = 'MP4 (WhatsApp / Reels)';
           exportMp4Option.title = `Codec suportado: ${supportedMp4Mime}`;
+          exportFormatSelect.value = 'mp4';
         } else {
           exportMp4Option.disabled = true;
           exportMp4Option.textContent = 'MP4 (Indisponível neste navegador)';
-          exportMp4Option.title = 'Este navegador não suporta gravação nativa em MP4; use WebM (Duração Corrigida).';
           exportFormatSelect.value = 'webm';
+        }
+        if (isMobileDevice && exportQualitySelect) {
+          exportQualitySelect.value = 'light';
         }
         updateExportButtonLabel();
       }
 
       function setExportingLock(locked) {
         btnExport.disabled = locked;
+        if (btnShareVideo) btnShareVideo.disabled = locked;
         btnPlayPause.disabled = locked;
         btnRestart.disabled = locked;
         btnOpenJsonModal.disabled = locked;
@@ -6189,12 +6148,53 @@ renderWatermark(ctx);
         scenePillElements.forEach((p) => { p.disabled = locked; });
       }
 
-      async function startRecording() {
+      function triggerBlobDownload(blob, filename) {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = filename;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        setTimeout(() => URL.revokeObjectURL(url), 6000);
+      }
+
+      async function shareCurrentVideo() {
+        if (isRecording || !activeProject) return;
+
+        if (!lastExportedFile) {
+          startRecording({ forShare: true });
+          return;
+        }
+
+        if (canShareVideoFile(lastExportedFile)) {
+          try {
+            btnShareVideo.classList.remove('ready-pulse');
+            await navigator.share({
+              files: [lastExportedFile],
+              title: activeProject.title || 'Vídeo 9:16',
+              text: activeProject.description || activeProject.title || ''
+            });
+            showToast('Vídeo compartilhado!');
+          } catch (err) {
+            if (err && err.name !== 'AbortError') {
+              triggerBlobDownload(lastExportedFile, lastExportedFile.name);
+              showToast('Compartilhamento bloqueado — vídeo salvo nos Downloads.', 'amber');
+            }
+          }
+        } else {
+          triggerBlobDownload(lastExportedFile, lastExportedFile.name);
+          showToast('MP4 baixado! Arraste para o WhatsApp Web ou Telegram (tela cheia 9:16).');
+        }
+      }
+
+      async function startRecording(opts = {}) {
+        const forShare = Boolean(opts && opts.forShare === true);
         if (isRecording || !activeProject) return;
 
         try {
           if (typeof canvas.captureStream !== 'function' || typeof MediaRecorder === 'undefined') {
-            showToast('Seu navegador não suporta gravação nativa via MediaRecorder.', 'error');
+            showToast('Seu navegador não suporta gravação de vídeo nativa.', 'error');
             return;
           }
 
@@ -6211,18 +6211,21 @@ renderWatermark(ctx);
           const fileExt = wantMp4 ? 'mp4' : 'webm';
           const downloadName = `${slugify(activeProject.title)}-9x16.${fileExt}`;
 
+          setExportingLock(true);
+          await requestScreenWakeLock();
           await ensureAudioReady();
           if (audioCtx && audioCtx.state === 'suspended') {
-            await audioCtx.resume();
+            await Promise.race([audioCtx.resume(), new Promise((r) => setTimeout(r, 200))]);
           }
           hideStartOverlay();
           stopAllContinuousAudio();
-          btnExport.disabled = true;
-if (narrationEnabled && activeProject.narrationLines && activeProject.narrationLines.length && !customVoiceBuffer) {
-  exportText.textContent = 'Gerando narração neural...';
-  await generateServerlessVoiceTrack(true);
-  targetDuration = activeProject.totalDuration;
-}
+
+          if (narrationEnabled && activeProject.narrationLines && activeProject.narrationLines.length && !customVoiceBuffer && location.protocol !== 'file:') {
+            exportText.textContent = 'Gerando voz TikTok...';
+            await generateServerlessVoiceTrack(true);
+            targetDuration = activeProject.totalDuration;
+          }
+
           wasPlayingBeforeRecord = isPlaying;
           isPlaying = false;
           currentTime = 0;
@@ -6230,15 +6233,12 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
           recordClockSec = 0;
           recordedChunks = [];
 
-          // UI entra em modo de preparação (pré-roll de 120ms)
-          setExportingLock(true);
           btnExport.classList.add('recording');
           recBadge.classList.add('active');
           recBarOverlay.classList.add('active');
           recBadgeText.textContent = 'REC 0%';
           exportText.textContent = 'Preparando áudio...';
 
-          // Pré-roll de 120ms com oscilador keep-alive silencioso (ganho 0.0001)
           startRecordingAudioKeepAlive();
           renderFrame(0);
           updatePlayerUI();
@@ -6246,7 +6246,6 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
           await new Promise((resolve) => setTimeout(resolve, 120));
           renderFrame(0);
 
-          // Captura respeitando exatamente o FPS escolhido (30 ou 60 FPS) + áudio sintetizado
           activeVideoStream = canvas.captureStream(preset.fps);
           const combinedTracks = [...activeVideoStream.getVideoTracks()];
           if (recordDest && recordDest.stream) {
@@ -6258,18 +6257,12 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
             videoBitsPerSecond: preset.videoBitsPerSecond,
             audioBitsPerSecond: preset.audioBitsPerSecond
           };
-          if (mimeType) {
-            options.mimeType = mimeType;
-          }
+          if (mimeType) options.mimeType = mimeType;
 
           activeRecorder = new MediaRecorder(combinedStream, options);
-
           activeRecorder.ondataavailable = (event) => {
-            if (event.data && event.data.size > 0) {
-              recordedChunks.push(event.data);
-            }
+            if (event.data && event.data.size > 0) recordedChunks.push(event.data);
           };
-
           activeRecorder.onerror = () => {
             cleanupRecordingUI();
             showToast('Erro durante a codificação do vídeo 9:16.', 'error');
@@ -6280,24 +6273,30 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
               const rawBlob = new Blob(recordedChunks, { type: mimeType || `video/${fileExt}` });
               let finalBlob = rawBlob;
 
-              // Corrige metadado EBML Duration no WebM para exibir a duração real exata
               if (!wantMp4) {
                 exportText.textContent = 'Corrigindo metadados de duração...';
                 finalBlob = await patchWebmDuration(rawBlob, Math.round(targetDuration * 1000));
               }
 
+              const cleanMime = wantMp4 ? 'video/mp4' : 'video/webm';
+              lastExportedFile = new File([finalBlob], downloadName, { type: cleanMime });
               const sizeMb = (finalBlob.size / (1024 * 1024)).toFixed(1);
-              const url = URL.createObjectURL(finalBlob);
+              const nativeShareOk = canShareVideoFile(lastExportedFile);
 
-              const link = document.createElement('a');
-              link.href = url;
-              link.download = downloadName;
-              document.body.appendChild(link);
-              link.click();
-              document.body.removeChild(link);
-
-              setTimeout(() => URL.revokeObjectURL(url), 6000);
-              showToast(`Exportado: ${downloadName} · ${targetDuration.toFixed(1)}s · ${sizeMb} MB`);
+              if (forShare && nativeShareOk) {
+                if (btnShareVideo) {
+                  btnShareVideo.classList.add('ready-pulse');
+                  if (shareVideoText) shareVideoText.textContent = '✓ Toque p/ Enviar!';
+                }
+                showToast(`Vídeo pronto (${sizeMb} MB)! Toque em "✓ Toque p/ Enviar!" para abrir WhatsApp/Redes.`);
+              } else {
+                triggerBlobDownload(finalBlob, downloadName);
+                if (nativeShareOk && btnShareVideo) {
+                  btnShareVideo.classList.add('ready-pulse');
+                  if (shareVideoText) shareVideoText.textContent = 'Compartilhar Agora';
+                }
+                showToast(`Exportado: ${downloadName} · ${targetDuration.toFixed(1)}s · ${sizeMb} MB`);
+              }
             } catch (err) {
               showToast('Não foi possível salvar o arquivo de vídeo.', 'error');
             } finally {
@@ -6305,7 +6304,6 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
             }
           };
 
-          // Timeslice de 100ms garante gravação estável até 60 segundos
           isRecording = true;
           isPlaying = true;
           recordStartTimestamp = performance.now();
@@ -6314,7 +6312,7 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
           activeRecorder.start(100);
         } catch (err) {
           cleanupRecordingUI();
-          showToast('Falha ao iniciar a exportação 9:16 com áudio.', 'error');
+          showToast('Falha ao iniciar a exportação 9:16.', 'error');
         }
       }
 
@@ -6323,7 +6321,6 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
         const dur = activeProject ? activeProject.totalDuration : 0;
         renderFrame(dur);
 
-        // Cauda curta de 150ms para finalizar o último som sem alongar o vídeo
         setTimeout(() => {
           try {
             stopRecordingAudioKeepAlive();
@@ -6341,6 +6338,7 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
       }
 
       function cleanupRecordingUI() {
+        releaseScreenWakeLock();
         stopRecordingAudioKeepAlive();
         isRecording = false;
         isPlaying = wasPlayingBeforeRecord;
@@ -6951,12 +6949,16 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
         }
       });
 
-      // =======================================================================
+     // =======================================================================
       // 15. CONTROLES DO PLAYER E INTERAÇÕES
       // =======================================================================
       btnStartHero.addEventListener('click', async () => {
         await ensureAudioReady();
         hideStartOverlay();
+        if (narrationEnabled && activeProject && activeProject.narrationLines && activeProject.narrationLines.length && !customVoiceBuffer && !isGeneratingVoice && location.protocol !== 'file:') {
+          await autoPrepareVoiceAndPlay(true);
+          return;
+        }
         currentTime = 0;
         prevTime = -0.001;
         isPlaying = true;
@@ -6967,6 +6969,11 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
         if (isRecording || !activeProject) return;
         await ensureAudioReady();
         hideStartOverlay();
+
+        if (!isPlaying && narrationEnabled && activeProject.narrationLines && activeProject.narrationLines.length && !customVoiceBuffer && !isGeneratingVoice && location.protocol !== 'file:') {
+          await autoPrepareVoiceAndPlay(true);
+          return;
+        }
 
         if (!isPlaying && currentTime >= activeProject.totalDuration) {
           currentTime = 0;
@@ -7010,6 +7017,7 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
         const nextIdx = (order.indexOf(subtitleMode) + 1) % order.length;
         subtitleMode = order[nextIdx];
         applySubtitleModeUI();
+        clearExportedFile();
         if (activeProject) {
           renderFrame(currentTime);
         }
@@ -7022,7 +7030,30 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
         btnGuides.setAttribute('aria-pressed', String(showGuides));
       });
 
-      btnExport.addEventListener('click', startRecording);
+      btnExport.addEventListener('click', () => startRecording({ forShare: false }));
+      if (btnShareVideo) btnShareVideo.addEventListener('click', shareCurrentVideo);
+
+      // Invalida o arquivo pronto sempre que mudar qualquer opção visual/áudio/exportação
+      [
+        exportFormatSelect,
+        exportQualitySelect,
+        document.getElementById('subtitleStyleSelect'),
+        document.getElementById('postFilterSelect'),
+        document.getElementById('watermarkPosSelect'),
+        voiceFileInput
+      ].forEach((el) => { if (el) el.addEventListener('change', clearExportedFile); });
+
+      const wmInputEl = document.getElementById('watermarkInput');
+      if (wmInputEl) wmInputEl.addEventListener('input', clearExportedFile);
+      if (btnClearVoice) btnClearVoice.addEventListener('click', clearExportedFile);
+      if (btnRecordVoice) btnRecordVoice.addEventListener('click', clearExportedFile);
+
+      document.addEventListener('visibilitychange', () => {
+        if (document.hidden && isPlaying && !isRecording) {
+          isPlaying = false;
+          updatePlayPauseButton();
+        }
+      });
 
       // --- Timeline Scrubbing (Mouse e Touch via Pointer Events) ---
       function seekFromClientX(clientX) {
@@ -7084,7 +7115,6 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
           updatePlayerUI();
         }
       });
-
       // =======================================================================
       // 16. INICIALIZAÇÃO
       // =======================================================================
