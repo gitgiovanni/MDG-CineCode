@@ -1746,6 +1746,167 @@
       outline: none;
     }
     .fx-input:focus { border-color: var(--accent-cyan); }
+
+    /* Wizard 3 Passos — Criar Novo Vídeo */
+    .wizard-stepper {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      padding: 12px 20px;
+      background: rgba(255, 255, 255, 0.02);
+      border-bottom: 1px solid var(--border-subtle);
+    }
+    .wizard-step-btn {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      min-height: 38px;
+      padding: 0 10px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-subtle);
+      background: var(--bg-elevated);
+      color: var(--text-secondary);
+      font-family: var(--font-sans);
+      font-size: 0.78rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.16s ease;
+    }
+    .wizard-step-btn:hover { color: var(--text-primary); border-color: var(--border-strong); }
+    .wizard-step-btn.active {
+      color: #ffffff;
+      background: linear-gradient(135deg, rgba(99, 102, 241, 0.34), rgba(6, 182, 212, 0.24));
+      border-color: rgba(129, 140, 248, 0.65);
+      box-shadow: 0 4px 14px rgba(99, 102, 241, 0.22);
+    }
+    .wizard-step-btn.done {
+      color: #a7f3d0;
+      border-color: rgba(16, 185, 129, 0.42);
+      background: rgba(16, 185, 129, 0.10);
+    }
+    .step-num {
+      width: 20px;
+      height: 20px;
+      border-radius: 999px;
+      display: grid;
+      place-items: center;
+      font-family: var(--font-mono);
+      font-size: 0.7rem;
+      font-weight: 800;
+      background: rgba(255, 255, 255, 0.10);
+      flex-shrink: 0;
+    }
+    .wizard-step-btn.active .step-num { background: var(--accent-indigo); color: #ffffff; }
+    .wizard-step-btn.done .step-num { background: var(--accent-emerald); color: #052e16; }
+
+    .wizard-pane { display: none; flex-direction: column; gap: 12px; flex: 1; }
+    .wizard-pane.active { display: flex; }
+
+    .idea-textarea {
+      width: 100%;
+      min-height: 150px;
+      resize: vertical;
+      padding: 14px 16px;
+      border-radius: var(--radius-md);
+      border: 1px solid var(--border-strong);
+      background: #080b12;
+      color: var(--text-primary);
+      font-family: var(--font-sans);
+      font-size: 0.9rem;
+      line-height: 1.55;
+      outline: none;
+    }
+    .idea-textarea:focus {
+      border-color: var(--accent-indigo);
+      box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.22);
+    }
+
+    .wizard-tip-box {
+      padding: 11px 14px;
+      border-radius: var(--radius-md);
+      background: rgba(6, 182, 212, 0.08);
+      border: 1px solid rgba(6, 182, 212, 0.28);
+      color: #cbd5e1;
+      font-size: 0.77rem;
+      line-height: 1.5;
+    }
+    .wizard-tip-box strong { color: #a5f3fc; }
+
+    .example-chips {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 7px;
+      margin-top: 8px;
+    }
+    .example-chip {
+      padding: 5px 11px;
+      border-radius: 999px;
+      border: 1px solid rgba(129, 140, 248, 0.36);
+      background: rgba(99, 102, 241, 0.14);
+      color: #e0e7ff;
+      font-family: var(--font-sans);
+      font-size: 0.72rem;
+      font-weight: 600;
+      cursor: pointer;
+      transition: background-color 0.15s ease, transform 0.1s ease;
+    }
+    .example-chip:hover { background: rgba(99, 102, 241, 0.28); transform: translateY(-1px); }
+
+    .wizard-step2-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 10px;
+    }
+    .btn-gemini-open {
+      min-height: 44px;
+      border-radius: var(--radius-md);
+      border: 1px solid rgba(167, 139, 250, 0.55);
+      background: linear-gradient(135deg, #2563eb 0%, #7c3aed 55%, #ec4899 100%);
+      color: #ffffff;
+      font-family: var(--font-sans);
+      font-size: 0.88rem;
+      font-weight: 700;
+      text-decoration: none;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 8px 22px rgba(124, 58, 237, 0.34);
+      transition: filter 0.15s ease, transform 0.1s ease;
+    }
+    .btn-gemini-open:hover { filter: brightness(1.1); }
+    .btn-gemini-open:active { transform: translateY(1px); }
+
+    .wizard-footer-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      width: 100%;
+      flex-wrap: wrap;
+    }
+    .wizard-footer-right {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .btn-ghost-link {
+      background: transparent;
+      border: 1px solid transparent;
+      color: var(--text-secondary);
+      font-size: 0.78rem;
+      font-weight: 500;
+      padding: 6px 10px;
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+    .btn-ghost-link:hover { color: var(--text-primary); background: rgba(255, 255, 255, 0.05); }
+
+    @media (max-width: 680px) {
+      .wizard-stepper, .wizard-step2-actions { grid-template-columns: 1fr; }
+    }
   </style>
 </head>
 
@@ -1827,20 +1988,13 @@
     <section class="controls-card" aria-label="Painel do Estúdio JSON Video Engine">
       <!-- Barra de Ações do Projeto -->
       <div class="project-toolbar">
-        <div class="toolbar-left">
+      <div class="toolbar-left">
           <button type="button" class="btn-new-json" id="btnOpenJsonModal">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
               <line x1="12" y1="5" x2="12" y2="19"></line>
               <line x1="5" y1="12" x2="19" y2="12"></line>
             </svg>
-            <span>Novo Vídeo (JSON)</span>
-          </button>
-
-          <button type="button" class="btn-ai-guide" id="btnOpenAiGuide">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-              <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"></path>
-            </svg>
-            <span>Guia para IA</span>
+            <span>Novo Vídeo</span>
           </button>
 
           <button type="button" class="btn-library" id="btnOpenLibrary">
@@ -2006,7 +2160,7 @@
             </label>
           </div>
           <div class="voice-status-line">
-            <span id="voiceTrackStatus">TTS ao vivo ativo. Para embutir voz no arquivo exportado, grave no Mic ou suba um .mp3/.wav.</span>
+            <span id="voiceTrackStatus">Pronto! A voz neural é gerada automaticamente ao clicar em "✦ Gerar Voz" ou "Exportar".</span>
           </div>
         </div>
 
@@ -2093,8 +2247,8 @@
     <div class="modal-dialog">
       <div class="modal-header">
         <div class="modal-title-group">
-          <h2 class="modal-title" id="jsonModalTitle">Carregar ou Anexar Vídeo via JSON</h2>
-          <p class="modal-subtitle">Cole o JSON gerado no chat (crases ```json são removidas automaticamente) — suporte até 60s.</p>
+          <h2 class="modal-title" id="jsonModalTitle">Criar Novo Vídeo com IA</h2>
+          <p class="modal-subtitle" id="jsonModalSubtitle">Descreva sua história, gere no Gemini em 1 clique e cole o resultado aqui.</p>
         </div>
         <button type="button" class="btn-icon-close" id="btnCloseJsonModal" aria-label="Fechar modal">
           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
@@ -2104,54 +2258,158 @@
         </button>
       </div>
 
+      <!-- Barra de 3 Passos -->
+      <div class="wizard-stepper" role="tablist">
+        <button type="button" class="wizard-step-btn active" id="wizardTab1" data-step="1">
+          <span class="step-num">1</span>
+          <span>Sua Ideia</span>
+        </button>
+        <button type="button" class="wizard-step-btn" id="wizardTab2" data-step="2">
+          <span class="step-num">2</span>
+          <span>Gerar na IA</span>
+        </button>
+        <button type="button" class="wizard-step-btn" id="wizardTab3" data-step="3">
+          <span class="step-num">3</span>
+          <span>Colar Resultado</span>
+        </button>
+      </div>
+
       <div class="modal-body">
-        <div class="modal-utils-bar">
-          <button type="button" class="btn-util" id="btnPasteClipboard">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1"></rect></svg>
-            <span>Colar da Área de Transferência</span>
-          </button>
+        <!-- PASSO 1: IDEIA DA HISTÓRIA -->
+        <div class="wizard-pane active" id="wizardStep1">
+          <div class="guide-tabs" role="tablist">
+            <button type="button" class="guide-tab active" id="wizardModeNew" aria-selected="true">
+              Criar Vídeo do Zero
+            </button>
+            <button type="button" class="guide-tab" id="wizardModeContinue" aria-selected="false">
+              Continuar Vídeo Atual (+ Cena)
+            </button>
+          </div>
 
-          <button type="button" class="btn-util" id="btnLoadJsonFile">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
-            <span>Carregar arquivo .json</span>
-          </button>
-          <input type="file" id="jsonFileInput" accept=".json,application/json,text/plain" style="display: none;" />
+          <textarea
+            id="wizardIdeaInput"
+            class="idea-textarea"
+            placeholder="Conte sua história aqui... Quem é o personagem, o que acontece do início ao fim e qual o clima (engraçado, suspense, ação, motivacional)?"
+          ></textarea>
 
-          <button type="button" class="btn-util" id="btnViewCurrentJson">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
-            <span>Ver JSON do vídeo atual</span>
-          </button>
-
-          <button type="button" class="btn-util" id="btnClearJson">
-            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>
-            <span>Limpar</span>
-          </button>
+          <div class="wizard-tip-box">
+            <strong>Dica:</strong> quanto mais claro o começo, meio e fim, melhor a animação e a trilha sonora! Exemplo: <em>"Um entregador vai fazer a última entrega da noite sob chuva forte, chega numa mansão mal-assombrada, ouve barulhos estranhos e sai correndo quando a porta abre sozinha."</em>
+            <div class="example-chips">
+              <button type="button" class="example-chip" data-example="Um entregador de pizza vai fazer a última entrega da noite debaixo de chuva forte, chega numa mansão mal-assombrada, bate na porta, um fantasma atende e ele sai correndo desesperado. Clima de suspense cômico.">Testar: Entrega Mal-Assombrada</button>
+              <button type="button" class="example-chip" data-example="Um jogador camisa 10 entra no último minuto da final do campeonato, dribla dois zagueiros, chuta no ângulo no último segundo e comemora com o estádio explodindo de alegria. Clima épico.">Testar: Gol no Último Minuto</button>
+              <button type="button" class="example-chip" data-example="Um cara decide começar a dieta na segunda-feira super motivado, vai pra academia, mas no caminho de volta passa na frente de uma pizzaria e não resiste. Clima engraçado.">Testar: Dieta na Segunda</button>
+            </div>
+          </div>
         </div>
 
-        <textarea
-          id="jsonTextarea"
-          class="json-textarea"
-          spellcheck="false"
-          placeholder='Cole aqui o JSON do vídeo (Formato A com "renderBody" ou Formato B com "segments")...'
-        ></textarea>
+        <!-- PASSO 2: SUPER PROMPT PRONTO + ABRIR GEMINI -->
+        <div class="wizard-pane" id="wizardStep2">
+          <p class="guide-hint">
+            Seu <strong>Super Prompt</strong> já está montado com a sua história embutida! Clique em <strong>Copiar Prompt</strong>, depois em <strong>Abrir Gemini</strong> e cole lá (<code>Ctrl+V</code>).
+          </p>
 
-        <div class="validation-status" id="jsonValidationBox">
-          <span class="status-dot"></span>
-          <span id="jsonValidationText">Aguardando JSON... Cole o conteúdo ou clique em "Ver JSON do vídeo atual".</span>
+          <div class="wizard-step2-actions">
+            <button type="button" class="btn-copy-master" id="btnWizardCopyPrompt">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="9" y="9" width="13" height="13" rx="2"></rect>
+                <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
+              </svg>
+              <span id="wizardCopyLabel">1. Copiar Super Prompt</span>
+            </button>
+
+            <a href="https://gemini.google.com/app" target="_blank" rel="noopener noreferrer" class="btn-gemini-open" id="btnOpenGemini">
+              <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="M12 3l1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9L12 3z"></path>
+              </svg>
+              <span>2. Abrir Gemini ↗</span>
+            </a>
+          </div>
+
+          <textarea
+            id="wizardPromptPreview"
+            class="prompt-textarea"
+            style="min-height: 210px;"
+            spellcheck="false"
+            readonly
+            aria-label="Super prompt gerado com sua história"
+          ></textarea>
+        </div>
+
+        <!-- PASSO 3: COLAR RESPOSTA DA IA -->
+        <div class="wizard-pane" id="wizardStep3">
+          <div class="modal-utils-bar">
+            <button type="button" class="btn-util" id="btnPasteClipboard">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 4h2a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2h2"></path><rect x="8" y="2" width="8" height="4" rx="1"></rect></svg>
+              <span>Colar da Área de Transferência</span>
+            </button>
+
+            <button type="button" class="btn-util" id="btnLoadJsonFile">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="17 8 12 3 7 8"></polyline><line x1="12" y1="3" x2="12" y2="15"></line></svg>
+              <span>Carregar arquivo .json</span>
+            </button>
+            <input type="file" id="jsonFileInput" accept=".json,application/json,text/plain" style="display: none;" />
+
+            <button type="button" class="btn-util" id="btnViewCurrentJson">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="16 18 22 12 16 6"></polyline><polyline points="8 6 2 12 8 18"></polyline></svg>
+              <span>Ver código do vídeo atual</span>
+            </button>
+
+            <button type="button" class="btn-util" id="btnClearJson">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path></svg>
+              <span>Limpar</span>
+            </button>
+          </div>
+
+          <textarea
+            id="jsonTextarea"
+            class="json-textarea"
+            spellcheck="false"
+            placeholder="Cole aqui o código que a IA respondeu (as crases ```json são limpas automaticamente)..."
+          ></textarea>
+
+          <div class="validation-status" id="jsonValidationBox">
+            <span class="status-dot"></span>
+            <span id="jsonValidationText">Aguardando resposta da IA... Clique em "Colar da Área de Transferência" ou use Ctrl+V.</span>
+          </div>
         </div>
       </div>
 
       <div class="modal-footer">
-        <button type="button" class="btn btn-append-scene" id="btnAppendScene" disabled>
-          <span>+ Anexar como Próxima Cena</span>
-        </button>
-        <button type="button" class="btn btn-load-video" id="btnLoadVideo" disabled>
-          <span>Carregar Novo Vídeo</span>
-        </button>
+        <!-- Rodapé Passo 1 -->
+        <div class="wizard-footer-row" id="wizardFooter1">
+          <button type="button" class="btn-ghost-link" id="btnJumpToStep3">Já tenho o código pronto →</button>
+          <div class="wizard-footer-right">
+            <button type="button" class="btn btn-load-video" id="btnWizardToStep2">
+              <span>Gerar Super Prompt →</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Rodapé Passo 2 -->
+        <div class="wizard-footer-row" id="wizardFooter2" style="display: none;">
+          <button type="button" class="btn" id="btnWizardBackTo1">← Editar Ideia</button>
+          <div class="wizard-footer-right">
+            <button type="button" class="btn btn-load-video" id="btnWizardToStep3">
+              <span>Já tenho a resposta da IA →</span>
+            </button>
+          </div>
+        </div>
+
+        <!-- Rodapé Passo 3 -->
+        <div class="wizard-footer-row" id="wizardFooter3" style="display: none;">
+          <button type="button" class="btn" id="btnWizardBackTo2">← Voltar ao Prompt</button>
+          <div class="wizard-footer-right">
+            <button type="button" class="btn btn-append-scene" id="btnAppendScene" disabled>
+              <span>+ Anexar como Próxima Cena</span>
+            </button>
+            <button type="button" class="btn btn-load-video" id="btnLoadVideo" disabled>
+              <span>Carregar Novo Vídeo</span>
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   </div>
-
   <!-- ========================================================================
        MODAL: BIBLIOTECA DE PROJETOS (localStorage)
        ======================================================================== -->
@@ -2186,56 +2444,7 @@
   <!-- ========================================================================
        MODAL: GUIA PARA IA (PROMPT MESTRE + CONTINUAÇÃO + PRÉVIA DE 18 SFX)
        ======================================================================== -->
-  <div class="modal-backdrop" id="aiGuideModal" aria-hidden="true" role="dialog" aria-modal="true" aria-labelledby="aiGuideModalTitle">
-    <div class="modal-dialog guide-dialog">
-      <div class="modal-header">
-        <div class="modal-title-group">
-          <h2 class="modal-title" id="aiGuideModalTitle">Guia para IA — Prompts Mestres</h2>
-          <p class="modal-subtitle">Copie o prompt pronto e cole no Gemini, ChatGPT ou Claude para gerar vídeos compatíveis na hora.</p>
-        </div>
-        <button type="button" class="btn-icon-close" id="btnCloseAiGuide" aria-label="Fechar guia para IA">
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <line x1="18" y1="6" x2="6" y2="18"></line>
-            <line x1="6" y1="6" x2="18" y2="18"></line>
-          </svg>
-        </button>
-      </div>
-
-      <div class="modal-body">
-        <div class="guide-tabs" role="tablist">
-          <button type="button" class="guide-tab active" id="tabNewVideoPrompt" role="tab" aria-selected="true">
-            Prompt — Criar Novo Vídeo
-          </button>
-          <button type="button" class="guide-tab" id="tabContinuePrompt" role="tab" aria-selected="false">
-            Prompt — Continuar História (+ Próxima Cena)
-          </button>
-        </div>
-
-        <p class="guide-hint" id="aiPromptHint">
-          Cole este prompt na sua IA favorita substituindo apenas o trecho final <strong>[COLE SUA IDEIA AQUI]</strong>. Depois, traga o JSON de volta em <strong>+ Novo Vídeo (JSON)</strong>.
-        </p>
-
-        <textarea id="aiPromptTextarea" class="prompt-textarea" spellcheck="false" aria-label="Prompt mestre para IA"></textarea>
-
-        <button type="button" class="btn-copy-master" id="btnCopyAiPrompt">
-          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
-            <rect x="9" y="9" width="13" height="13" rx="2"></rect>
-            <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>
-          </svg>
-          <span id="copyAiPromptLabel">Copiar Prompt Mestre</span>
-        </button>
-
-        <div class="sfx-preview-section">
-          <div class="sfx-preview-header">
-            <span>18 Efeitos Sonoros Sintetizados Prontos</span>
-            <span class="sfx-preview-sub">Clique em qualquer tag para ouvir uma prévia agora</span>
-          </div>
-          <div class="sfx-tags-grid" id="sfxTagsGrid"></div>
-        </div>
-      </div>
-    </div>
-  </div>
-
+ 
   <!-- Toast de Mensagens -->
   <div class="toast" id="toast" role="status" aria-live="polite">
     <span class="toast-dot"></span>
@@ -2674,7 +2883,6 @@
 
       // Modal JSON
       const btnOpenJsonModal = document.getElementById('btnOpenJsonModal');
-      const btnOpenAiGuide = document.getElementById('btnOpenAiGuide');
       const jsonModal = document.getElementById('jsonModal');
       const btnCloseJsonModal = document.getElementById('btnCloseJsonModal');
       const btnPasteClipboard = document.getElementById('btnPasteClipboard');
@@ -2695,17 +2903,7 @@
       const btnDownloadCurrentJson = document.getElementById('btnDownloadCurrentJson');
       const libraryList = document.getElementById('libraryList');
 
-      // Modal Guia para IA
-      const aiGuideModal = document.getElementById('aiGuideModal');
-      const btnCloseAiGuide = document.getElementById('btnCloseAiGuide');
-      const tabNewVideoPrompt = document.getElementById('tabNewVideoPrompt');
-      const tabContinuePrompt = document.getElementById('tabContinuePrompt');
-      const aiPromptHint = document.getElementById('aiPromptHint');
-      const aiPromptTextarea = document.getElementById('aiPromptTextarea');
-      const btnCopyAiPrompt = document.getElementById('btnCopyAiPrompt');
-      const copyAiPromptLabel = document.getElementById('copyAiPromptLabel');
-      const sfxTagsGrid = document.getElementById('sfxTagsGrid');
-
+      
       // Toast
       const toastEl = document.getElementById('toast');
       const toastMsg = document.getElementById('toastMessage');
@@ -5151,6 +5349,7 @@ renderWatermark(ctx);
         customVoiceBuffer = null;
         voiceDuckWindows = [];
         if (btnClearVoice) btnClearVoice.style.display = 'none';
+        if (voiceTrackStatus) voiceTrackStatus.textContent = 'Pronto! A voz neural é gerada automaticamente ao clicar em "✦ Gerar Voz" ou "Exportar".';
         activeProject = compiled;
         currentTime = clamp(seekTo, 0, compiled.totalDuration);
         prevTime = currentTime - 0.001;
@@ -5668,7 +5867,6 @@ renderWatermark(ctx);
         btnPlayPause.disabled = locked;
         btnRestart.disabled = locked;
         btnOpenJsonModal.disabled = locked;
-        btnOpenAiGuide.disabled = locked;
         btnOpenLibrary.disabled = locked;
         exportFormatSelect.disabled = locked;
         exportQualitySelect.disabled = locked;
@@ -5704,6 +5902,7 @@ renderWatermark(ctx);
           }
           hideStartOverlay();
           stopAllContinuousAudio();
+          btnExport.disabled = true;
 if (narrationEnabled && activeProject.narrationLines && activeProject.narrationLines.length && !customVoiceBuffer) {
   exportText.textContent = 'Gerando narração neural...';
   await generateServerlessVoiceTrack(true);
@@ -5891,15 +6090,15 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
         }
       }
 
-      function openJsonModal(prefillCurrent = false) {
+     function openJsonModal(prefillCurrent = false, initialStep = 1) {
         if (isRecording) return;
         if (prefillCurrent && activeProject) {
           jsonTextarea.value = JSON.stringify(activeProject.raw, null, 2);
         }
+        setWizardStep(prefillCurrent ? 3 : initialStep);
         validateJsonTextarea();
         jsonModal.classList.add('open');
         jsonModal.setAttribute('aria-hidden', 'false');
-        setTimeout(() => jsonTextarea.focus(), 60);
       }
 
       function closeJsonModal() {
@@ -5907,8 +6106,8 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
         jsonModal.setAttribute('aria-hidden', 'true');
       }
 
-      btnOpenJsonModal.addEventListener('click', () => openJsonModal(false));
-      btnReopenJsonFromError.addEventListener('click', () => openJsonModal(true));
+      btnOpenJsonModal.addEventListener('click', () => openJsonModal(false, 1));
+      btnReopenJsonFromError.addEventListener('click', () => openJsonModal(true, 3));
       btnCloseJsonModal.addEventListener('click', closeJsonModal);
       jsonModal.addEventListener('click', (e) => {
         if (e.target === jsonModal) closeJsonModal();
@@ -6159,9 +6358,34 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
         if (activeProject) downloadJsonObject(activeProject.raw);
       });
 
+     // =======================================================================
+      // 14B. WIZARD 3 PASSOS (IDEIA -> SUPER PROMPT + GEMINI -> COLAR JSON)
       // =======================================================================
-      // 14B. MODAL "GUIA PARA IA" (PROMPT MESTRE + CONTINUAÇÃO + PRÉVIA SFX)
-      // =======================================================================
+      let wizardStep = 1;
+      let wizardMode = 'new'; // 'new' | 'continue'
+
+      const wizardTab1 = document.getElementById('wizardTab1');
+      const wizardTab2 = document.getElementById('wizardTab2');
+      const wizardTab3 = document.getElementById('wizardTab3');
+      const wizardStep1 = document.getElementById('wizardStep1');
+      const wizardStep2 = document.getElementById('wizardStep2');
+      const wizardStep3 = document.getElementById('wizardStep3');
+      const wizardFooter1 = document.getElementById('wizardFooter1');
+      const wizardFooter2 = document.getElementById('wizardFooter2');
+      const wizardFooter3 = document.getElementById('wizardFooter3');
+      const wizardModeNew = document.getElementById('wizardModeNew');
+      const wizardModeContinue = document.getElementById('wizardModeContinue');
+      const wizardIdeaInput = document.getElementById('wizardIdeaInput');
+      const wizardPromptPreview = document.getElementById('wizardPromptPreview');
+      const btnWizardCopyPrompt = document.getElementById('btnWizardCopyPrompt');
+      const wizardCopyLabel = document.getElementById('wizardCopyLabel');
+      const btnOpenGemini = document.getElementById('btnOpenGemini');
+      const btnWizardToStep2 = document.getElementById('btnWizardToStep2');
+      const btnJumpToStep3 = document.getElementById('btnJumpToStep3');
+      const btnWizardBackTo1 = document.getElementById('btnWizardBackTo1');
+      const btnWizardToStep3 = document.getElementById('btnWizardToStep3');
+      const btnWizardBackTo2 = document.getElementById('btnWizardBackTo2');
+
       function copyTextSafely(text) {
         try {
           const temp = document.createElement('textarea');
@@ -6181,10 +6405,11 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
         }
       }
 
-     function buildCreateVideoPrompt() {
+      function buildCreateVideoPrompt(userIdea = '') {
+        const ideaText = String(userIdea || '').trim() || '[COLE SUA IDEIA AQUI]';
         return [
           'Atue como um Diretor de Animação Procedural 2D + Sound Designer especialista em HTML5 Canvas e Web Audio API.',
-          'Crie um vídeo animado vertical 9:16 (1080x1920) para o CineCode JSON Studio e Devolva APENAS o JSON válido SEMPRE envolvido em um bloco de código Markdown (```json ... ```), nunca em texto solto, para não corromper operadores matemáticos.',
+          'Crie um vídeo animado vertical 9:16 (1080x1920) para o CineCode JSON Studio e devolva APENAS o JSON válido SEMPRE envolvido em um bloco de código Markdown (```json ... ```), nunca em texto solto, para não corromper operadores matemáticos.',
           '',
           'CONTRATO JSON COMPLETO (SUPORTA MÚSICA, AMBIÊNCIA CONTÍNUA, SONS LIVRES E NARRADOR):',
           '{',
@@ -6218,12 +6443,12 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
           '}',
           '',
           'REGRAS DE ÁUDIO LIVRE (NÃO SE LIMITE A PRESETS!):',
-          '1. CRIE SONS LIVRES com "customCode" sempre que a cena pedir sons específicos (trovão, sussurro fantasmagórico, motor, espada, risada, porta batendo, explosão etc.).',
+          '1. CRIE SONS LIVRES com "customCode" sempre que a cena pedir sons específicos (trovão, sussurro, motor, espada, risada, despertador, explosão etc.).',
           '   customCode recebe (ac, dest, vol, a) onde `a` oferece: a.osc({type,freq,freqEnd,delay,attack,duration,gain,filterType,filterFreq,filterEnd,Q,reverb}), a.noiseBurst({pink,filterType,freq,freqEnd,Q,delay,attack,duration,gain,reverb}), a.note("C4"), a.noise, a.pinkNoise, a.reverb, a.track(node).',
-          '2. MÚSICA DE FUNDO ("music"): componha melodias e acordes reais adequados ao clima! Instrumentos prontos: piano, pad, strings, musicBox, bass, synth, organ, bell, kick, snare, hihat. Cada nota é ["NotaOuAcorde", beatInicio, duracaoEmBeats].',
+          '2. MÚSICA DE FUNDO ("music"): componha melodias e acordes reais adequados ao clima de cada segmento! Instrumentos: piano, pad, strings, musicBox, bass, synth, organ, bell, kick, snare, hihat. Cada nota é ["NotaOuAcorde", beatInicio, duracaoEmBeats].',
           '3. AMBIÊNCIAS CONTÍNUAS ("ambience"): use presets (rain, storm, wind, horrorDrone, forestNight, policeSiren, heartbeat, fire, crowd, tensionPulse) OU "customCode" contínuo recebendo (ac, dest, dur, vol, a).',
-         '4. NARRADOR ("narration"): sempre que a história tiver narração, adicione falas curtas sincronizadas com os segmentos (ajustando rate e pitch ao clima). Quando usar narration, o motor gera as legendas automaticamente a partir dela — não precisa duplicar subtitles.',
-          '5. Atalhos de SFX opcionais se forem úteis: woodKnock, footstep, pop, whoosh, chime, whistle, bark, meow, boing, impact, crash, applause, sadTrombone, laser, splash, doorCreak, bell, alert.',
+          '4. NARRADOR ("narration"): adicione falas curtas sincronizadas com os segmentos (ajustando rate e pitch ao clima). Quando usar narration, o motor gera as legendas automaticamente a partir dela — não precisa duplicar subtitles.',
+          '5. Atalhos de SFX opcionais: woodKnock, footstep, pop, whoosh, chime, whistle, bark, meow, boing, impact, crash, applause, sadTrombone, laser, splash, doorCreak, bell, alert.',
           '',
           'REGRAS VISUAIS 9:16 (1080x1920):',
           '- PERSONAGENS DETALHADOS OBRIGATÓRIOS: SEMPRE use h.drawCharacter(ctx, x, yPésNoChão, { t, scale, facing, pose, mood, shirt, pants, skin, hairColor, hairStyle, prop, talking }) para desenhar pessoas! Poses: idle, walk, run, celebrate, paint, phone, shock, sit. Moods: happy, excited, neutral, confused, shocked, sad, angry. Props: none, money, card, phone, roller, bag. NUNCA desenhe bonecos sem olhos/rosto.',
@@ -6233,11 +6458,12 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
           '- Helpers `h`: clamp, lerp, invLerp, smoothstep, easeInOutCubic, easeOutCubic, easeOutBack, easeOutQuad, roundRect, drawShadow, drawImpactRings, drawSubtitle(ctx, text, progress), setCameraLabel.',
           '- Ação principal entre Y=850 e Y=1450 (topo e base livres p/ legendas). Câmera virtual, paralaxe, sombras no chão e personagens articulados em movimento contínuo. Código compacto para não truncar o JSON.',
           '',
-          'IDEIA DO VÍDEO: [COLE SUA IDEIA AQUI]'
+          `IDEIA DO VÍDEO: ${ideaText}`
         ].join('\n');
       }
 
-      function buildContinueStoryPrompt() {
+      function buildContinueStoryPrompt(userIdea = '') {
+        const ideaText = String(userIdea || '').trim() || '[DESCREVA A CONTINUAÇÃO AQUI]';
         const title = activeProject ? activeProject.title : 'Vídeo Atual';
         const currentDur = activeProject ? activeProject.totalDuration : 0;
         const remaining = Math.max(0, MAX_DURATION - currentDur);
@@ -6247,8 +6473,8 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
           : '  1. Cena inicial';
 
         return [
-          'Atue como Diretor de Animação Procedural 2D para o CineCode JSON Studio.',
-          'Gere APENAS o JSON do PRÓXIMO SEGMENTO para continuar a história abaixo (vou colar usando "+ Anexar como Próxima Cena"). Não reescreva cenas anteriores e devolva somente o bloco JSON válido.',
+          'Atue como Diretor de Animação Procedural 2D + Sound Designer para o CineCode JSON Studio.',
+          'Gere APENAS o JSON do PRÓXIMO SEGMENTO para continuar a história abaixo (vou colar usando "+ Anexar como Próxima Cena"). Devolva APENAS o JSON válido SEMPRE envolvido em um bloco de código Markdown (```json ... ```), nunca em texto solto.',
           '',
           'CONTEXTO DO VÍDEO ATUAL:',
           `- Título: ${title}`,
@@ -6257,116 +6483,144 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
           scenesList,
           '',
           'REGRAS PARA ESTA CONTINUAÇÃO:',
-          `- Duração sugerida para o novo segmento: até ${suggestedSegDur}s (nunca ultrapassar ${remaining.toFixed(1)}s restantes).`,
-          '- Mantenha exatamente os mesmos personagens, paleta de cores, proporções e estilo visual das cenas anteriores.',
-          '- Use transitionIn: "fade" ou "zoom", canvas 1080x1920, ação principal entre Y=850 e Y=1450, câmera virtual, animações determinísticas em `t` usando o objeto `h`, legendas com h.drawSubtitle(ctx, texto, progresso) e código compacto.',
-          '' ,
-        
-          'REGRAS DE ÁUDIO LIVRE (NÃO SE LIMITE A PRESETS!):',
-          '1. CRIE SONS LIVRES com "customCode" sempre que a cena pedir sons específicos (trovão, sussurro fantasmagórico, motor, espada, risada, porta batendo, explosão etc.).',
-          '   customCode recebe (ac, dest, vol, a) onde `a` oferece: a.osc({type,freq,freqEnd,delay,attack,duration,gain,filterType,filterFreq,filterEnd,Q,reverb}), a.noiseBurst({pink,filterType,freq,freqEnd,Q,delay,attack,duration,gain,reverb}), a.note("C4"), a.noise, a.pinkNoise, a.reverb, a.track(node).',
-          '2. MÚSICA DE FUNDO ("music"): componha melodias e acordes reais adequados ao clima! Instrumentos prontos: piano, pad, strings, musicBox, bass, synth, organ, bell, kick, snare, hihat. Cada nota é ["NotaOuAcorde", beatInicio, duracaoEmBeats].',
-          '3. AMBIÊNCIAS CONTÍNUAS ("ambience"): use presets (rain, storm, wind, horrorDrone, forestNight, policeSiren, heartbeat, fire, crowd, tensionPulse) OU "customCode" contínuo recebendo (ac, dest, dur, vol, a).',
-          '4. NARRADOR ("narration"): sempre que a história tiver narração, adicione falas curtas sincronizadas com os segmentos (ajustando rate e pitch ao clima).',
-          '5. Atalhos de SFX opcionais se forem úteis: woodKnock, footstep, pop, whoosh, chime, whistle, bark, meow, boing, impact, crash, applause, sadTrombone, laser, splash, doorCreak, bell, alert.',
-          '',          '',
+          `- Duração sugerida: até ${suggestedSegDur}s (nunca ultrapassar ${remaining.toFixed(1)}s restantes). Calcule pela fala (~2.4 palavras/s + 0.8s).`,
+          '- SEMPRE use h.drawCharacter(ctx, x, yPesNoChao, { t, scale, facing, pose, mood, shirt, pants, skin, hairColor, hairStyle, prop, talking }) para pessoas, mantendo a aparência das cenas anteriores.',
+          '- Use transitionIn: "fade" ou "zoom", canvas 1080x1920, ação principal entre Y=850 e Y=1450, nada de textos acima de Y=460, e código compacto.',
+          '- ÁUDIO LIVRE: use "music", "ambience", "narration" (gera legenda automática) e "soundTriggers" com "customCode" usando (ac, dest, vol, a).',
+          '',
           'FORMATO EXATO DE SAÍDA (APENAS 1 SEGMENTO NOVO):',
           '{',
           `  "title": "${title} — Continuação",`,
           '  "segments": [',
           '    {',
-          '      "id": "seg-proximo",',
-          '      "title": "Próxima Cena",',
-          `      "duration": ${suggestedSegDur},`,
-          '      "cameraLabel": "PAN · 1.1x",',
-          '      "transitionIn": "fade",',
+          '      "id": "seg-proximo", "title": "Próxima Cena",',
+          `      "duration": ${suggestedSegDur}, "cameraLabel": "PAN · 1.1x", "transitionIn": "fade",`,
+          '      "narration": [ { "start": 0.3, "text": "Fala da continuação.", "rate": 1.0, "pitch": 1.0 } ],',
           '      "soundTriggers": [ { "time": 0.4, "type": "whoosh", "volume": 0.9 } ],',
           '      "renderBody": "// JS puro compacto (ctx, t, duration, h)"',
           '    }',
           '  ]',
           '}',
           '',
-          'O QUE ACONTECE NESTA PRÓXIMA CENA: [DESCREVA A CONTINUAÇÃO AQUI]'
+          `O QUE ACONTECE NESTA PRÓXIMA CENA: ${ideaText}`
         ].join('\n');
       }
 
-      function renderAiGuideTab(tab) {
-        activeGuideTab = tab;
-        const isNew = tab === 'new';
-        tabNewVideoPrompt.classList.toggle('active', isNew);
-        tabNewVideoPrompt.setAttribute('aria-selected', String(isNew));
-        tabContinuePrompt.classList.toggle('active', !isNew);
-        tabContinuePrompt.setAttribute('aria-selected', String(!isNew));
+      function updateWizardPrompt() {
+        const idea = wizardIdeaInput ? wizardIdeaInput.value : '';
+        if (wizardPromptPreview) {
+          wizardPromptPreview.value = wizardMode === 'continue'
+            ? buildContinueStoryPrompt(idea)
+            : buildCreateVideoPrompt(idea);
+        }
+        if (wizardCopyLabel) wizardCopyLabel.textContent = '1. Copiar Super Prompt';
+      }
 
-        if (isNew) {
-          aiPromptHint.innerHTML = 'Cole este prompt na sua IA favorita substituindo apenas <strong>[COLE SUA IDEIA AQUI]</strong>. Depois, cole o JSON retornado em <strong>+ Novo Vídeo (JSON)</strong>.';
-          aiPromptTextarea.value = buildCreateVideoPrompt();
-          copyAiPromptLabel.textContent = 'Copiar Prompt Mestre';
-        } else {
-          const rem = activeProject ? Math.max(0, MAX_DURATION - activeProject.totalDuration).toFixed(1) : '60.0';
-          aiPromptHint.innerHTML = `Já preenchido com o projeto atual (restam <strong>${rem}s</strong> até o teto de 60s). Depois, cole a resposta usando <strong>+ Anexar como Próxima Cena</strong>.`;
-          aiPromptTextarea.value = buildContinueStoryPrompt();
-          copyAiPromptLabel.textContent = 'Copiar Prompt de Continuação';
+      function setWizardMode(mode) {
+        wizardMode = mode;
+        const isNew = mode === 'new';
+        if (wizardModeNew) {
+          wizardModeNew.classList.toggle('active', isNew);
+          wizardModeNew.setAttribute('aria-selected', String(isNew));
+        }
+        if (wizardModeContinue) {
+          wizardModeContinue.classList.toggle('active', !isNew);
+          wizardModeContinue.setAttribute('aria-selected', String(!isNew));
+        }
+        if (wizardIdeaInput) {
+          wizardIdeaInput.placeholder = isNew
+            ? 'Conte sua história aqui... Quem é o personagem, o que acontece do início ao fim e qual o clima (engraçado, suspense, ação, motivacional)?'
+            : `Descreva o que acontece na próxima cena de "${activeProject ? activeProject.title : 'seu vídeo'}"...`;
+        }
+        updateWizardPrompt();
+      }
+
+      function setWizardStep(step) {
+        wizardStep = clamp(Number(step) || 1, 1, 3);
+        const tabs = [wizardTab1, wizardTab2, wizardTab3];
+        const panes = [wizardStep1, wizardStep2, wizardStep3];
+        const footers = [wizardFooter1, wizardFooter2, wizardFooter3];
+
+        tabs.forEach((btn, idx) => {
+          if (!btn) return;
+          const n = idx + 1;
+          btn.classList.toggle('active', n === wizardStep);
+          btn.classList.toggle('done', n < wizardStep);
+        });
+        panes.forEach((p, idx) => {
+          if (p) p.classList.toggle('active', idx + 1 === wizardStep);
+        });
+        footers.forEach((f, idx) => {
+          if (f) f.style.display = idx + 1 === wizardStep ? 'flex' : 'none';
+        });
+
+        if (wizardStep === 1 && wizardIdeaInput) {
+          setTimeout(() => wizardIdeaInput.focus(), 50);
+        } else if (wizardStep === 2) {
+          updateWizardPrompt();
+        } else if (wizardStep === 3) {
+          validateJsonTextarea();
+          setTimeout(() => jsonTextarea.focus(), 50);
         }
       }
 
-      function renderSfxPreviewTags() {
-        sfxTagsGrid.innerHTML = '';
-        const names = Object.keys(SFX_LIB);
-        names.forEach((name, idx) => {
-          const btn = document.createElement('button');
-          btn.type = 'button';
-          btn.className = 'sfx-tag';
-          btn.title = `Ouvir prévia do som "${name}"`;
-          btn.innerHTML = `<svg width="11" height="11" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><polygon points="6 4 20 12 6 20 6 4"></polygon></svg><span>${name}</span>`;
-          btn.addEventListener('click', async () => {
-            await ensureAudioReady();
-            if (isMuted) {
-              isMuted = false;
-              updateMuteButton();
-            }
-            playSoundTrigger({ type: name, volume: 1.0 }, idx);
-            btn.classList.add('playing');
-            setTimeout(() => btn.classList.remove('playing'), 260);
-          });
-          sfxTagsGrid.appendChild(btn);
+      [wizardTab1, wizardTab2, wizardTab3].forEach((tabBtn) => {
+        if (!tabBtn) return;
+        tabBtn.addEventListener('click', () => setWizardStep(Number(tabBtn.dataset.step)));
+      });
+
+      if (wizardModeNew) wizardModeNew.addEventListener('click', () => setWizardMode('new'));
+      if (wizardModeContinue) wizardModeContinue.addEventListener('click', () => setWizardMode('continue'));
+
+      document.querySelectorAll('.example-chip').forEach((chip) => {
+        chip.addEventListener('click', () => {
+          if (wizardIdeaInput) {
+            wizardIdeaInput.value = chip.dataset.example || '';
+            wizardIdeaInput.focus();
+          }
+        });
+      });
+
+      if (btnWizardToStep2) {
+        btnWizardToStep2.addEventListener('click', () => {
+          if (!wizardIdeaInput.value.trim()) {
+            showToast('Escreva sua ideia de história primeiro (ou clique em um exemplo).', 'amber');
+            wizardIdeaInput.focus();
+            return;
+          }
+          setWizardStep(2);
+        });
+      }
+      if (btnJumpToStep3) btnJumpToStep3.addEventListener('click', () => setWizardStep(3));
+      if (btnWizardBackTo1) btnWizardBackTo1.addEventListener('click', () => setWizardStep(1));
+      if (btnWizardToStep3) btnWizardToStep3.addEventListener('click', () => setWizardStep(3));
+      if (btnWizardBackTo2) btnWizardBackTo2.addEventListener('click', () => setWizardStep(2));
+
+      if (btnWizardCopyPrompt) {
+        btnWizardCopyPrompt.addEventListener('click', () => {
+          updateWizardPrompt();
+          const ok = copyTextSafely(wizardPromptPreview.value);
+          if (ok) {
+            if (wizardCopyLabel) wizardCopyLabel.textContent = '✓ Prompt Copiado!';
+            showToast('Super Prompt copiado! Agora clique em "Abrir Gemini" e dê Ctrl+V.');
+          } else {
+            wizardPromptPreview.focus();
+            wizardPromptPreview.select();
+            showToast('Prompt selecionado — pressione Ctrl+C para copiar.', 'amber');
+          }
         });
       }
 
-      function openAiGuideModal() {
-        if (isRecording) return;
-        renderAiGuideTab(activeGuideTab);
-        aiGuideModal.classList.add('open');
-        aiGuideModal.setAttribute('aria-hidden', 'false');
+      if (btnOpenGemini) {
+        btnOpenGemini.addEventListener('click', () => {
+          updateWizardPrompt();
+          copyTextSafely(wizardPromptPreview.value);
+          if (wizardCopyLabel) wizardCopyLabel.textContent = '✓ Prompt Copiado!';
+          showToast('Prompt copiado automaticamente! Cole (Ctrl+V) lá no Gemini.');
+        });
       }
 
-      function closeAiGuideModal() {
-        aiGuideModal.classList.remove('open');
-        aiGuideModal.setAttribute('aria-hidden', 'true');
-      }
-
-      btnOpenAiGuide.addEventListener('click', openAiGuideModal);
-      btnCloseAiGuide.addEventListener('click', closeAiGuideModal);
-      aiGuideModal.addEventListener('click', (e) => {
-        if (e.target === aiGuideModal) closeAiGuideModal();
-      });
-      tabNewVideoPrompt.addEventListener('click', () => renderAiGuideTab('new'));
-      tabContinuePrompt.addEventListener('click', () => renderAiGuideTab('continue'));
-
-      btnCopyAiPrompt.addEventListener('click', () => {
-        const ok = copyTextSafely(aiPromptTextarea.value);
-        if (ok) {
-          showToast(
-            activeGuideTab === 'new'
-              ? 'Prompt Mestre copiado! Agora cole na sua IA.'
-              : 'Prompt de Continuação copiado! Agora cole na sua IA.'
-          );
-        } else {
-          aiPromptTextarea.focus();
-          aiPromptTextarea.select();
-          showToast('Texto selecionado — pressione Ctrl+C para copiar.', 'amber');
-        }
-      });
+      function renderSfxPreviewTags() {}
 
       exportFormatSelect.addEventListener('change', updateExportButtonLabel);
 
@@ -6375,7 +6629,6 @@ if (narrationEnabled && activeProject.narrationLines && activeProject.narrationL
         if (e.key === 'Escape') {
           if (jsonModal.classList.contains('open')) closeJsonModal();
           if (libraryModal.classList.contains('open')) closeLibraryModal();
-          if (aiGuideModal.classList.contains('open')) closeAiGuideModal();
         }
       });
 
