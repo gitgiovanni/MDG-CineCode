@@ -2,7 +2,7 @@
 <html lang="pt-BR">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
   <title>Estúdio Vertical 9:16 — JSON Video Engine</title>
   <style>
     /* ==========================================================================
@@ -1906,6 +1906,73 @@
 
     @media (max-width: 680px) {
       .wizard-stepper, .wizard-step2-actions { grid-template-columns: 1fr; }
+    }
+    /* Botões de Exportar + Compartilhar */
+    .export-actions-row {
+      display: grid;
+      grid-template-columns: minmax(0, 1.35fr) minmax(0, 1fr);
+      gap: 8px;
+    }
+    .btn-share {
+      width: 100%;
+      min-height: 48px;
+      padding: 0 14px;
+      border-radius: var(--radius-lg);
+      font-size: 0.88rem;
+      font-weight: 700;
+      color: #d1fae5;
+      border: 1px solid rgba(16, 185, 129, 0.48);
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.24), rgba(6, 182, 212, 0.22));
+      box-shadow: 0 8px 22px rgba(16, 185, 129, 0.16);
+    }
+    .btn-share:hover:not(:disabled) {
+      filter: brightness(1.1);
+      border-color: rgba(52, 211, 153, 0.78);
+      color: #ffffff;
+    }
+    .btn-share.ready-pulse {
+      background: linear-gradient(135deg, #059669 0%, #0d9488 100%);
+      border-color: rgba(167, 243, 208, 0.85);
+      color: #ffffff;
+      box-shadow: 0 0 24px rgba(16, 185, 129, 0.55);
+      animation: share-pulse 1.3s infinite ease-in-out;
+    }
+    @keyframes share-pulse {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.025); }
+    }
+
+    /* Polimento Mobile (Android & iOS) */
+    @media (max-width: 900px) {
+      body {
+        padding: 10px 10px calc(18px + env(safe-area-inset-bottom, 0px));
+        align-items: flex-start;
+      }
+      .studio-shell {
+        gap: 14px;
+      }
+      .phone-bezel {
+        height: min(68dvh, 580px);
+        padding: 7px;
+        border-radius: 26px;
+      }
+      .viewport-stage { border-radius: 20px; }
+      .controls-card { border-radius: 16px; }
+      .project-toolbar, .studio-header, .controls-body { padding-left: 14px; padding-right: 14px; }
+      .controls-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .export-options-row, .fx-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .export-actions-row { grid-template-columns: 1fr; }
+      .btn { min-height: 44px; font-size: 0.82rem; padding: 0 10px; }
+      .modal-backdrop { padding: 8px; }
+      .modal-dialog { max-height: 92dvh; border-radius: 16px; }
+      .wizard-stepper { grid-template-columns: repeat(3, minmax(0, 1fr)); padding: 10px 12px; gap: 6px; }
+      .wizard-step-btn { font-size: 0.71rem; padding: 0 6px; gap: 5px; }
+      .idea-textarea, .json-textarea, .prompt-textarea, .fx-input, .export-select, .voice-select {
+        font-size: 16px; /* Evita zoom automático chato no iOS Safari */
+      }
+    }
+    @media (max-width: 400px) {
+      .export-options-row, .fx-row { grid-template-columns: 1fr; }
     }
   </style>
 </head>
